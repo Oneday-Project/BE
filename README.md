@@ -1,5 +1,9 @@
-# 🧩 백엔드
+# 🧩 백엔드 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)
 
+---
+
+## 🌐 NestJS 기본 실행 시 접속 URL
+- http://localhost:3000
 ---
 
 ## ⚙️ VSCode 설정
@@ -16,6 +20,9 @@ nest new .
 
 # 실행
 npm run start:dev
+
+# DB가 존재할 때의 실행 절차
+docker-compose up -> npm run start:dev
 
 # 📦 NestJS 리소스 생성
 nest g resource
