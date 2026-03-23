@@ -3,7 +3,7 @@
 ---
 ## 깃허브 -> 로컬
 ```
-git clone 
+git clone https://github.com/Oneday-Project/BE.git .
 
 # 2. 의존성 설치
 npm install
