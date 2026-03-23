@@ -9,7 +9,8 @@
 
 ```
 # 현재 폴더에 NestJS 프로젝트 생성
-nest new .
+nest new . 
+-> npm 선택
 
 # 실행
 npm run start:dev
