@@ -2,7 +2,15 @@
 
 ---
 ## 깃허브 -> 로컬
-- git clone으로 받아오면 npm install을 터미널에 입력 -> 필요한 패키지 모두 설치 가능
+```
+git clone 
+
+# 2. 의존성 설치
+npm install
+
+# 3. 개발 서버 실행
+npm run start:dev
+```
 ---
 ## 🌐 NestJS 기본 실행 시 접속 URL
 - http://localhost:3000
