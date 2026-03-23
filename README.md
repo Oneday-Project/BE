@@ -3,7 +3,7 @@
 ---
 ## 깃허브 -> 로컬
 ```
-# 1. git clone
+# 1. git clone (처음에만 실행 -> 그 이후부터는 git pull이나 git fetch로 가져오기)
 git clone https://github.com/Oneday-Project/BE.git .
 
 # 2. 의존성 설치
