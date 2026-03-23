@@ -1,6 +1,8 @@
 # 🧩 백엔드 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white)
 
 ---
+## 깃허브 -> 로컬
+- git clone으로 받아오면 npm install을 터미널에 입력 -> 필요한 패키지 모두 설치 가능
 
 ## 🌐 NestJS 기본 실행 시 접속 URL
 - http://localhost:3000
