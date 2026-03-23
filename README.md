@@ -5,13 +5,6 @@
 ## 🌐 NestJS 기본 실행 시 접속 URL
 - http://localhost:3000
 ---
-
-## ⚙️ VSCode 설정
-
-- VS Code에서 Extension 툴인 ESLint 비활성화 시 주석에서 빨간 줄 제거 가능
-
----
-
 ## 🚀 프로젝트 생성 및 실행
 
 ```
@@ -24,14 +17,16 @@ npm run start:dev
 # DB가 존재할 때의 실행 절차
 docker-compose up -> npm run start:dev -> 개발 -> Postman 테스트
 
-# 📦 NestJS 리소스 생성
+# NestJS 리소스 생성
 nest g resource
 ->  What name would you like to use for this resource (plural, e.g., "users")? --> 원하는 폴더명 입력
 -> What transport layer do you use? --> REST API 선택
 -> Would you like to generate CRUD entry points? (Y/n) --> n
 ```
+---
+## 📦 패키지 설치
 
-## 🐳 Docker 관련
+### 🐳 Docker
 ```
 # 도커 설치 확인
 docker --version
@@ -43,47 +38,47 @@ docker-compose up
 docker-compose down
 ```
 
-## 🗄️ DB (TypeORM + PostgreSQL)
+### 🗄️ DB (TypeORM + PostgreSQL)
 ```
 # 관련 패키지 설치
 npm install @nestjs/typeorm typeorm pg
 ```
 
-## 🔐 인증 관련
+### 🔐 인증
 ```
 # 관련 패키지 설치
 npm install @nestjs/jwt bcrypt
 -> 사용자 인증 관련 패키지 설치
 ```
 
-## 🧾 Validation
+### 🧾 Validation
 ```
 # 관련 패키지 설치
 npm install class-validator class-transformer
 -> 클래스 validator, transformer사용을 위한 설치
 ```
 
-## ⚙️ 환경 변수 관리
+### ⚙️ 환경 변수 관리
 ```
 # 관련 패키지 설치
 npm install @nestjs/config
 ```
 
-## 📁 파일 업로드
+### 📁 파일 업로드
 ```
 # 관련 패키지 설치
 npm install multer @types/multer uuid @types/uuid
 -> 파일 업로드를 위해 필요한 모듈
 ```
 
-## 🖼️ Static 파일 제공
+### 🖼️ Static 파일 제공
 ```
 # 관련 패키지 설치
 npm install @nestjs/serve-static
 -> 파일(static file)을 외부에서 가져가서 보여줄 수 있도록 해주는 기능
 ```
 
-## 🔌 WebSocket
+### 🔌 WebSocket
 ```
 # 관련 패키지 설치
 npm install @nestjs/websockets @nestjs/platform-socket.io socket.io
