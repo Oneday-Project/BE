@@ -3,10 +3,11 @@
 ---
 ## 깃허브 -> 로컬
 ```
+# 1. git clone
 git clone https://github.com/Oneday-Project/BE.git .
 
 # 2. 의존성 설치
-npm install
+터미널 -> cd backend -> npm install
 
 # 3. 개발 서버 실행
 npm run start:dev
