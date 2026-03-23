@@ -22,7 +22,7 @@ nest new .
 npm run start:dev
 
 # DB가 존재할 때의 실행 절차
-docker-compose up -> npm run start:dev
+docker-compose up -> npm run start:dev -> 개발 -> Postman 테스트
 
 # 📦 NestJS 리소스 생성
 nest g resource
