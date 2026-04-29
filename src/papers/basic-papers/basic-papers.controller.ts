@@ -11,8 +11,10 @@ export class BasicPapersController {
     @Query('category') category: string = 'cs.AI',
     @Query('start', ParseIntPipe) start: number = 0,
     @Query('sort') sort?: string,
+    @Query('startDate') startDate?: string, // YYYYMMDD 형식 (예: 20240101)
+    @Query('endDate') endDate?: string,     // YYYYMMDD 형식 (예: 20240131)
   ) {
-    return this.basicPapersService.fetchArxiv(category, start, sort);
+    return this.basicPapersService.fetchArxiv(category, start, sort, startDate, endDate);
   }
 
   @Get('fetch-ss')

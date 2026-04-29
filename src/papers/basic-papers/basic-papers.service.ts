@@ -89,13 +89,25 @@ export class BasicPapersService {
   // ══════════════════════════════════════════════════════════════════
 
   async fetchArxiv(
-    category: string, // 수집할 arXiv 카테고리 (예: cs.AI)
-    start: number,    // 페이지네이션 시작 인덱스
-    sort?: string,    // 정렬 옵션 ('latest' 전달 시 최신순 정렬. 넣지 않으면 관련도순)
+    category: string,   // 수집할 arXiv 카테고리 (예: cs.AI)
+    start: number,      // 페이지네이션 시작 인덱스
+    sort?: string,      // 정렬 옵션 ('latest' 전달 시 최신순 정렬. 넣지 않으면 관련도순)
+    startDate?: string, // 날짜 범위 시작일 (YYYYMMDD 형식, 예: 20240101)
+    endDate?: string,   // 날짜 범위 종료일 (YYYYMMDD 형식, 예: 20240131)
   ) {
-    let url = `${ARXIV_API_BASE}?search_query=cat:${category}&start=${start}&max_results=${ARXIV_MAX_RESULTS}`; 
+    const hasDateRange = !!(startDate || endDate);
+    const maxResults   = hasDateRange ? 100 : ARXIV_MAX_RESULTS; // 날짜 범위 지정 시 최대 100개로 제한
 
-    if (sort === 'latest') { // 최신순 정렬 옵션이 있을 때만 파라미터 추가
+    let searchQuery = `cat:${category}`;
+    if (hasDateRange) {
+      const from = startDate ?? '00000101'; // 시작일 없으면 가장 이른 날짜
+      const to   = endDate   ?? '99991231'; // 종료일 없으면 가장 늦은 날짜
+      searchQuery += ` AND submittedDate:[${from} TO ${to}]`;
+    }
+
+    let url = `${ARXIV_API_BASE}?search_query=${encodeURIComponent(searchQuery)}&start=${start}&max_results=${maxResults}`;
+
+    if (sort === 'latest' || hasDateRange) { // 날짜 범위 지정 시 자동으로 최신순 정렬
       url += `&sortBy=submittedDate&sortOrder=descending`; // 제출일 기준 내림차순 정렬
     }
 
