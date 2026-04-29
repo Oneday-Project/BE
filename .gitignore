@@ -1,4 +1,5 @@
 # compiled output
+/postgres-data
 /dist
 /node_modules
 /build
