@@ -24,7 +24,7 @@ git switch 브랜치명(jungwoo, yerin)
 # 3. 깃허브 업로드
 git add .
 git commit -m "커밋 메시지(알아서 작성)"
-git push
+git push -u origin 브랜치명(jungwoo, yerin)
 ```
 ---
 
