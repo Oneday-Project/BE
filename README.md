@@ -9,6 +9,9 @@ git clone https://github.com/Oneday-Project/BE.git .
 # 2. 의존성 설치
 터미널 -> pnpm install
 
+# 3. 도커 실행
+docker-compose up
+
 # 3. 개발 서버 실행
 pnpm start:dev
 ```
