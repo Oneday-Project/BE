@@ -7,10 +7,10 @@
 git clone https://github.com/Oneday-Project/BE.git .
 
 # 2. 의존성 설치
-터미널 -> cd backend -> npm install
+터미널 -> pnpm install
 
 # 3. 개발 서버 실행
-npm run start:dev
+pnpm start:dev
 ```
 ---
 ## 🌐 NestJS 기본 실행 시 접속 URL
@@ -21,13 +21,13 @@ npm run start:dev
 ```
 # 현재 폴더에 NestJS 프로젝트 생성
 nest new . 
--> npm 선택
+-> pnpm 선택
 
 # 실행
-npm run start:dev
+pnpm start:dev
 
 # DB가 존재할 때의 실행 절차
-docker-compose up -> npm run start:dev -> 개발 -> Postman 테스트
+docker-compose up -> pnpm start:dev -> 개발 -> Postman 테스트
 
 # NestJS 리소스 생성
 nest g resource
@@ -53,50 +53,50 @@ docker-compose down
 ### 🗄️ DB (TypeORM + PostgreSQL)
 ```
 # 관련 패키지 설치
-npm install @nestjs/typeorm typeorm pg
+pnpm install @nestjs/typeorm typeorm pg
 ```
 
 ### 🔐 인증
 ```
 # 관련 패키지 설치
-npm install @nestjs/jwt bcrypt
+pnpm install @nestjs/jwt bcrypt
 -> 사용자 인증 관련 패키지 설치
 ```
 
 ### 🧾 Validation
 ```
 # 관련 패키지 설치
-npm install class-validator class-transformer
+pnpm install class-validator class-transformer
 -> 클래스 validator, transformer사용을 위한 설치
 ```
 
 ### ⚙️ 환경 변수 관리
 ```
 # 관련 패키지 설치
-npm install @nestjs/config
+pnpm install @nestjs/config
 ```
 
 ### 📁 파일 업로드
 ```
 # 관련 패키지 설치
-npm install multer @types/multer uuid @types/uuid
+pnpm install multer @types/multer uuid @types/uuid
 -> 파일 업로드를 위해 필요한 모듈
 ```
 
 ### 🖼️ Static 파일 제공
 ```
 # 관련 패키지 설치
-npm install @nestjs/serve-static
+pnpm install @nestjs/serve-static
 -> 파일(static file)을 외부에서 가져가서 보여줄 수 있도록 해주는 기능
 ```
 
 ### 🔌 WebSocket
 ```
 # 관련 패키지 설치
-npm install @nestjs/websockets @nestjs/platform-socket.io socket.io
+pnpm install @nestjs/websockets @nestjs/platform-socket.io socket.io
 
 # 문제 발생 시
-npm install @nestjs/common @nestjs/core @nestjs/jwt @nestjs/platform-express @nestjs/platform-socket.io @nestjs/typeorm @nestjs/websockets
+pnpm install @nestjs/common @nestjs/core @nestjs/jwt @nestjs/platform-express @nestjs/platform-socket.io @nestjs/typeorm @nestjs/websockets
 -> Nest 관련 패키지를 동일한 최신 버전으로 재설치
 ```
 
