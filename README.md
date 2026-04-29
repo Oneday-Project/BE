@@ -6,7 +6,7 @@
 # 1. git clone (처음에만 실행 -> 만약 기존 프로젝트 폴더에서 또 한다면 그 이후부터는 git pull이나 git fetch로 가져오기)
 git clone https://github.com/Oneday-Project/BE.git .
 
-# 2. postgres-data.zip 압축 해제
+# 2. postgres-data.zip 압축 해제(zip파일 삭제 ㄴㄴ)
 이게 가장 불편한 점.. -> 깃허브에 postgres-data폴더를 올리고 clone으로 가져오면 파일이 손상됨..
 만약 DB가 추가/수정된 것이 있다면 팀원들에게 공지 후 zip파일을 깃허브에 올려줘..
 zip파일 만들때는 도커 및 서버를 끈 상태로 압축해야 정상적으로 압축 가능(실행중인 파일은 압축이 안됨)
@@ -25,6 +25,8 @@ pnpm start:dev
 ---
 ## 로컬 -> 깃허브
 ```
+# 0. DB에 생성/갱신한 데이터가 있다면 꼭 postgres-data.zip을 새로 만들어서 push!!! 
+
 # 1. 브랜치 생성 및 변경(각자 할당된 브랜치 사용)
 git branch jungwoo 또는 git branch yerin
 git switch jungwoo 또는 git switch yerin
