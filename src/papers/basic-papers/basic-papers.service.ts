@@ -96,7 +96,6 @@ export class BasicPapersService {
     endDate?: string,   // 날짜 범위 종료일 (YYYYMMDD 형식, 예: 20240131)
   ) {
     const hasDateRange = !!(startDate || endDate);
-    const maxResults   = hasDateRange ? 100 : ARXIV_MAX_RESULTS; // 날짜 범위 지정 시 최대 100개로 제한
 
     let searchQuery = `cat:${category}`;
     if (hasDateRange) {
@@ -105,7 +104,7 @@ export class BasicPapersService {
       searchQuery += ` AND submittedDate:[${from} TO ${to}]`;
     }
 
-    let url = `${ARXIV_API_BASE}?search_query=${encodeURIComponent(searchQuery)}&start=${start}&max_results=${maxResults}`;
+    let url = `${ARXIV_API_BASE}?search_query=${encodeURIComponent(searchQuery)}&start=${start}&max_results=${ARXIV_MAX_RESULTS}`;
 
     if (sort === 'latest' || hasDateRange) { // 날짜 범위 지정 시 자동으로 최신순 정렬
       url += `&sortBy=submittedDate&sortOrder=descending`; // 제출일 기준 내림차순 정렬
@@ -292,9 +291,12 @@ export class BasicPapersService {
         })
         .filter((p): p is RawSemanticScholar => p !== null); // null 제거 (타입 가드로 타입도 좁힘). 남은 값들은 RawSemanticScholar 타입
 
-      if (papers.length > 0) { // 저장할 데이터가 있을 때만
-        await this.ss2Repository.upsert(papers, ['ss2Id']); // ss2Id 기준으로 upsert(insert + update) (있으면 업데이트, 없으면 삽입)
-        totalSaved += papers.length; // 저장된 수 누적
+      // 같은 배치 내 ss2Id 중복 제거 (동일 SS 논문이 여러 arXiv ID로 반환될 경우 upsert 에러 방지)
+      const uniquePapers = [...new Map(papers.map((p) => [p.ss2Id, p])).values()];
+
+      if (uniquePapers.length > 0) { // 저장할 데이터가 있을 때만
+        await this.ss2Repository.upsert(uniquePapers, ['ss2Id']); // ss2Id 기준으로 upsert(insert + update) (있으면 업데이트, 없으면 삽입)
+        totalSaved += uniquePapers.length; // 저장된 수 누적
       }
 
       if (i + SS2_BATCH_SIZE < toFetch.length) await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 다음 요청 전 딜레이
