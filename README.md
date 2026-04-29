@@ -22,7 +22,7 @@ pnpm start:dev
 ---
 ## 로컬 -> 깃허브
 ```
-# 1. 브랜치 변경(각자 할당된 브랜치 사용)
+# 1. 브랜치 생성 및 변경(각자 할당된 브랜치 사용)
 git branch jungwoo 또는 git branch yerin
 git switch jungwoo 또는 git switch yerin
 
