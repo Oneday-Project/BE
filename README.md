@@ -61,7 +61,7 @@ nest g resource
 -> Would you like to generate CRUD entry points? (Y/n) --> n
 ```
 ---
-## 📦 패키지 설치
+## 📦 패키지 설치(일단 아래의 것들 중 필요한 것만 설치)
 
 ### 🐳 Docker
 ```
