@@ -9,6 +9,10 @@ git clone https://github.com/Oneday-Project/BE.git .
 # 2. 의존성 설치
 터미널 -> pnpm install
 
+# 3. postgres-data.zip 압축 해제
+이게 가장 불편한 점.. -> 깃허브에 postgres-data폴더를 올리고 clone으로 가져오면 파일이 손상됨..
+만약 DB가 추가/수정된 것이 있다면 팀원들에게 공지 후 zip파일을 깃허브에 올려줘..
+
 # 3. 도커 실행
 docker-compose up
 
