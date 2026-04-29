@@ -3,7 +3,7 @@
 ---
 ## 깃허브 -> 로컬
 ```
-# 1. git clone (처음에만 실행 -> 그 이후부터는 git pull이나 git fetch로 가져오기)
+# 1. git clone (처음에만 실행 -> 만약 기존 프로젝트 폴더에서 또 한다면 그 이후부터는 git pull이나 git fetch로 가져오기)
 git clone https://github.com/Oneday-Project/BE.git .
 
 # 2. 의존성 설치
@@ -13,6 +13,21 @@ git clone https://github.com/Oneday-Project/BE.git .
 pnpm start:dev
 ```
 ---
+## 로컬 -> 깃허브
+```
+# 1. 브랜치 변경
+git branch 브랜치명(jungwoo, yerin)
+git switch 브랜치명(jungwoo, yerin)
+
+# 2. 개발
+
+# 3. 깃허브 업로드
+git add .
+git commit -m "커밋 메시지(알아서 작성)"
+git push
+```
+---
+
 ## 🌐 NestJS 기본 실행 시 접속 URL
 - http://localhost:3000
 ---
