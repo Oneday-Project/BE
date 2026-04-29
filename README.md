@@ -13,25 +13,25 @@ git clone https://github.com/Oneday-Project/BE.git .
 이게 가장 불편한 점.. -> 깃허브에 postgres-data폴더를 올리고 clone으로 가져오면 파일이 손상됨..
 만약 DB가 추가/수정된 것이 있다면 팀원들에게 공지 후 zip파일을 깃허브에 올려줘..
 
-# 3. 도커 실행
+# 4. 도커 실행
 docker-compose up
 
-# 3. 개발 서버 실행
+# 5. 개발 서버 실행
 pnpm start:dev
 ```
 ---
 ## 로컬 -> 깃허브
 ```
-# 1. 브랜치 변경
-git branch 브랜치명(jungwoo, yerin)
-git switch 브랜치명(jungwoo, yerin)
+# 1. 브랜치 변경(각자 할당된 브랜치 사용)
+git branch jungwoo 또는 git branch yerin
+git switch jungwoo 또는 git switch yerin
 
 # 2. 개발
 
-# 3. 깃허브 업로드
+# 3. 깃허브 업로드(각자 할당된 브랜치 사용)
 git add .
 git commit -m "커밋 메시지(알아서 작성)"
-git push -u origin 브랜치명(jungwoo, yerin)
+git push -u origin jungwoo 또는 git push -u origin yerin
 ```
 ---
 
