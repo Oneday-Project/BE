@@ -29,7 +29,7 @@ export class User {
 
     @Column({
         enum: Role,
-        default: Role.GUEST
+        default: Role.USER,
     })
     role!: Role;
-}
+} 
