@@ -17,22 +17,30 @@ export class PapersService {
 
     const {title} = dto;
 
-    const qb = await this.papersRepository.createQueryBuilder('paper')
+    const qb = this.papersRepository.createQueryBuilder('paper')
 
     if(title){
       qb.where('paper.title LIKE :title', {title: `%${title}%`});
     }
 
-    const {nextCursor} = await this.commonService.pagination(qb, dto);
+    // // 커서 기반 페이지네이션
+    // const { data, nextCursor, hasNext } = await this.commonService.applyCursorPaginationParamsToQb(qb, dto);
 
-    let [data, count] = await qb.getManyAndCount();
+    // return {
+    //     data,
+    //     nextCursor,
+    //     hasNext,
+    // };
 
+    // 페이지 기반 페이지네이션
+    const { data, total, totalPages, page } = await this.commonService.applyPagePaginationParamsToQb(qb, dto);
 
-    return { 
-      data,
-      nextCursor,
-      count,
-    }; 
+    return {
+        data,
+        total,
+        totalPages,
+        page,
+    };
   }
 
 }
