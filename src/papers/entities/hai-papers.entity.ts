@@ -1,7 +1,8 @@
+import { BaseModel } from 'src/common/entities/base.entity';
 import { Column, CreateDateColumn, Entity, PrimaryColumn, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('hai_papers')
-export class HAIpapers {
+export class HAIpapers extends BaseModel{
     @PrimaryGeneratedColumn()
     id!: number;
 
@@ -28,10 +29,4 @@ export class HAIpapers {
 
     @Column({ name: 'pdf_url', type: 'text', nullable: true })
     pdfUrl!: string; // pdf링크
-
-    @CreateDateColumn() 
-    createdAt!: Date;
-
-    @UpdateDateColumn()
-    updatedAt!: Date;
 }

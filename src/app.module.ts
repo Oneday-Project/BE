@@ -14,6 +14,9 @@ import { BasicPapersModule } from './papers/basic-papers/basic-papers.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as Joi from 'joi';
 import { envVariableKeys } from './common/const/env.const';
+import { UsersModule } from './users/users.module';
+import { User } from './users/entities/user.entity';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -46,6 +49,7 @@ import { envVariableKeys } from './common/const/env.const';
           RawArxiv,
           HAIpapers,
           MajorCourse,
+          User,
         ],
         synchronize: true,
       }),
@@ -54,7 +58,7 @@ import { envVariableKeys } from './common/const/env.const';
     PapersModule, 
     BasicPapersModule, 
     HaiPapersModule, 
-    MajorCoursesModule,
+    MajorCoursesModule, UsersModule, AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
