@@ -1,6 +1,6 @@
 import { Exclude } from "class-transformer";
 import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
-import { Role } from "../const/roles.const";
+import { RolesEnum } from "../const/roles.const";
 
 
 @Entity()
@@ -22,14 +22,14 @@ export class User {
     email!: string;
 
     @Column()
-    // @Exclude({
-    //     toPlainOnly: true,
-    // })
+    @Exclude({
+        toPlainOnly: true,
+    })
     password!: string;
 
     @Column({
-        enum: Role,
-        default: Role.USER,
+        enum: RolesEnum,
+        default: RolesEnum.USER,
     })
-    role!: Role;
+    role!: RolesEnum;
 } 
