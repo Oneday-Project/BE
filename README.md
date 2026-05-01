@@ -3,7 +3,7 @@
 ---
 ## 깃허브 -> 로컬
 ```
-# 1. git clone (처음에만 실행 -> 만약 기존 프로젝트 폴더에서 또 한다면 그 이후부터는 git pull이나 git fetch로 가져오기)
+# 1. git clone (처음에만 실행 -> 만약 기존 프로젝트 폴더에서 또 한다면 그 이후부터는 git pull origin main 이나 git fetch origin main 으로 가져오기)
 git clone https://github.com/Oneday-Project/BE.git .
 
 # 2. postgres-data.zip 압축 해제(zip파일 삭제 ㄴㄴ)
