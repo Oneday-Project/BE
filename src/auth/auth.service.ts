@@ -141,4 +141,19 @@ export class AuthService {
     return token;
   }
 
+  verifyToken(token: string){
+    try{
+      const decoded = this.jwtService.decode(token);
+      const isRefreshToken = decoded.type === 'refresh';
+
+      return this.jwtService.verify(token, {
+        secret: this.configService.get<string>(
+            isRefreshToken ? envVariableKeys.refreshTokenSecret : envVariableKeys.accessTokenSecret
+        ),
+      });
+    }catch(e){
+      throw new UnauthorizedException('토큰이 만료됐거나 잘못된 토큰입니다.');
+    }
+}
+
 }
