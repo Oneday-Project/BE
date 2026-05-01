@@ -1,7 +1,8 @@
-import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { BaseModel } from 'src/common/entities/base.entity';
+import { Column, Entity, PrimaryColumn } from 'typeorm';
 
 @Entity('raw_arxiv')
-export class RawArxiv {
+export class RawArxiv extends BaseModel {
     @PrimaryColumn({ name: 'arxiv_id' })
     arxivId!: string;
 
@@ -19,10 +20,4 @@ export class RawArxiv {
 
     @Column({ name: 'pdf_url', nullable: false })
     pdfUrl!: string; // pdf링크
-
-    @CreateDateColumn()
-    createdAt!: Date;
-
-    @UpdateDateColumn()
-    updatedAt!: Date;
 }
