@@ -17,6 +17,8 @@ import { envVariableKeys } from './common/const/env.const';
 import { UsersModule } from './users/users.module';
 import { User } from './users/entities/user.entity';
 import { AuthModule } from './auth/auth.module';
+import { AccessTokenGuard } from './auth/guard/bearer-token.guard';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -61,6 +63,11 @@ import { AuthModule } from './auth/auth.module';
     MajorCoursesModule, UsersModule, AuthModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService,
+    {
+      provide: APP_GUARD,
+      useClass: AccessTokenGuard,
+    },
+  ],
 })
 export class AppModule {}
