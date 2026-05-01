@@ -2,12 +2,14 @@ import { Body, Controller, Post, Headers } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
+import { IsPublic } from 'src/common/decorator/is-public.decorator';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @IsPublic()
   registerUser(
     @Body() body: RegisterUserDto,
   ){
@@ -15,6 +17,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @IsPublic()
   loginUser(
     @Body() body: LoginUserDto,
   ){
@@ -35,14 +38,14 @@ export class AuthController {
     }
   }
 
-  @Post('token/access') // access토큰 재발급
+  @Post('token/refresh') // refresh토큰 재발급
   getRefreshToken(@Headers('authorization') rawToken: string) { 
     const bearerToken = this.authService.extractTokenFromHeader(rawToken); 
-    const newToken = this.authService.rotateToken(bearerToken, true); // access토큰 재발급
+    const newToken = this.authService.rotateToken(bearerToken, true); // refresh토큰 재발급
 
     /**
      * 반환 형태
-     * {accessToken: {token}}
+     * {refreshToken: {token}}
      */
     return {
       refreshToken: newToken,
