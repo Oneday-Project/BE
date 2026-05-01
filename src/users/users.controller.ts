@@ -1,15 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Body, Patch, Param, Delete, ParseIntPipe, UseInterceptors, ClassSerializerInterceptor } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { identity } from 'rxjs';
-
+import { Roles } from 'src/auth/decorator/roles.decorator';
+import { IsPublic } from 'src/common/decorator/is-public.decorator';
+import { RolesEnum } from './const/roles.const';
 @Controller('users')
+@UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
 
   @Get()
+  @Roles(RolesEnum.ADMIN)
   findAllUser() {
     return this.usersService.findAllUser();
   }
