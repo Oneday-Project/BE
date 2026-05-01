@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe } from 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { identity } from 'rxjs';
 
 @Controller('users')
 export class UsersController {
@@ -14,14 +15,14 @@ export class UsersController {
   }
 
   @Get(':id')
-  findOneUser(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.findOneUser(id);
+  findUserById(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.findUserById(id);
   }
 
   @Patch(':id')
   updateUser(
     @Param('id', ParseIntPipe) id: number, 
-    @Body() updateUserDto: UpdateUserDto
+    @Body() updateUserDto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(id, updateUserDto);
   }
