@@ -1,7 +1,8 @@
+import { BaseModel } from 'src/common/entities/base.entity';
 import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('raw_semantic_scholar')
-export class RawSemanticScholar {
+export class RawSemanticScholar extends BaseModel {
     @PrimaryColumn({ name: 'ss2_id' })
     ss2Id!: string; // ss2 자체 ID
 
@@ -22,10 +23,4 @@ export class RawSemanticScholar {
 
     @Column({ nullable: true })
     journal!: string; // 저널 / 학회
-
-    @CreateDateColumn()
-    createdAt!: Date;
-
-    @UpdateDateColumn()
-    updatedAt!: Date;
 }

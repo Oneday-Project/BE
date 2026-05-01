@@ -1,7 +1,8 @@
+import { BaseModel } from "src/common/entities/base.entity";
 import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from "typeorm";
 
 @Entity()
-export class MajorCourse {
+export class MajorCourse extends BaseModel {
     @PrimaryColumn()
     course_id!: string; // 과목 고유 ID
 
@@ -28,10 +29,4 @@ export class MajorCourse {
 
     @Column({type: 'text'})
     description!: string; // 과목 설명
-
-    @CreateDateColumn()
-    createdAt!: Date;
-
-    @UpdateDateColumn()
-    updatedAt!: Date;
 }
