@@ -6,50 +6,23 @@ import { BasePaginationDto } from "./dto/base-pagination.dto";
 export class CommonService {
     constructor(){}
 
-    pagination<T extends ObjectLiteral> ( 
-        qb: SelectQueryBuilder<T>,
-        dto: BasePaginationDto,
-    ){
-        const primaryColumns = qb.expressionMap.mainAlias!.metadata.primaryColumns;
-
-        dto.order = dto.order?.filter(Boolean);
-
-        if (!dto.order || dto.order.length === 0) {
-            dto.order = primaryColumns.map((col) => `${col.propertyName}_DESC`);
-        }
-
-        if (dto.page) {
-            return this.applyPagePaginationParamsToQb(qb, dto);
-        }else {
-            return this.applyCursorPaginationParamsToQb(qb, dto);
-        }
-    }
-
-    applyPagePaginationParamsToQb<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
+    async applyPagePaginationParamsToQb<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
         const {page, take, order} = dto; // order 추가
 
         const skip = (page! - 1) * take;
         qb.take(take);
         qb.skip(skip);
 
-        // 커서 기반과 동일한 정렬 로직
-        for(let i = 0; i < order.length; i++){
-            const lastUnderscoreIdx = order[i].lastIndexOf('_');
-            const column = order[i].slice(0, lastUnderscoreIdx);
-            const direction = order[i].slice(lastUnderscoreIdx + 1);
+        this.applyOrderToQb(qb, order);
 
-            if(direction !== 'ASC' && direction !== 'DESC'){
-                throw new BadRequestException('Order는 ASC 또는 DESC로 입력해주세요!');
-            }
+        const [data, total] = await qb.getManyAndCount();
 
-            if(i === 0){
-                qb.orderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');
-            }else{
-                qb.addOrderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');
-            }
-        }
-
-        return { qb, nextCursor: null };
+        return {
+            data,
+            total, // 전체 데이터 수
+            totalPages: Math.ceil(total / take), // 총 페이지 수 
+            page, // 현재 페이지
+        };
     }
 
     async applyCursorPaginationParamsToQb<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
@@ -107,32 +80,19 @@ export class CommonService {
             qb.where(`(${orConditions.join(' OR ')})`, params);
         }
 
-        for(let i = 0; i < order.length; i++){
-            // [변경] split('_') 에서 lastIndexOf('_') 방식으로 변경
-            // 기존: const [column, direction] = order[i].split('_');
-            // → "created_at_DESC" 처럼 컬럼명에 "_"가 포함된 경우 잘못 파싱되는 문제 해결
-            const lastUnderscoreIdx = order[i].lastIndexOf('_');
-            const column = order[i].slice(0, lastUnderscoreIdx);
-            const direction = order[i].slice(lastUnderscoreIdx + 1);
-
-            if(direction !== 'ASC' && direction !== 'DESC'){
-                throw new BadRequestException('Order는 ASC 또는 DESC로 입력해주세요!');
-            }
-
-            if(i === 0){
-                qb.orderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');
-            }else{
-                qb.addOrderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');
-            }
-        }
+        this.applyOrderToQb(qb, order);
 
         qb.take(take);
 
-        const results = await qb.getMany();
+        const data = await qb.getMany();
 
-        const nextCursor = this.generateNextCursor(results, order);
+        const nextCursor = data.length < take ? null : this.generateNextCursor(data, order);
 
-        return {qb, nextCursor};
+        return {
+            data,
+            nextCursor,
+            hasNext: nextCursor !== null,   // 다음 페이지 존재 여부
+        };
     }
 
     private generateNextCursor<T>(results: T[], order: string[]): string | null {
@@ -157,4 +117,22 @@ export class CommonService {
 
         return nextCursor;
     }
+
+    private applyOrderToQb<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, order: string[]) {
+        for(let i = 0; i < order.length; i++){
+            const lastUnderscoreIdx = order[i].lastIndexOf('_');
+            const column = order[i].slice(0, lastUnderscoreIdx);
+            const direction = order[i].slice(lastUnderscoreIdx + 1);
+
+            if(direction !== 'ASC' && direction !== 'DESC'){
+                throw new BadRequestException('Order는 ASC 또는 DESC로 입력해주세요!');
+            }
+
+            if(i === 0){
+                qb.orderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');
+            }else{
+                qb.addOrderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');
+            }
+    }
+}
 }
