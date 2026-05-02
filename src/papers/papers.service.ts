@@ -70,12 +70,12 @@ export class PapersService {
 
     // 직접 기간 설정
     if (startDate) {
-      qb.andWhere('paper.publishedDate >= :dateFrom', { startDate });
+      qb.andWhere('paper.publishedDate >= :startDate', { startDate });
     }
 
     // 직접 기간 설정
     if (endDate) {
-      qb.andWhere('paper.publishedDate <= :dateTo', { endDate });
+      qb.andWhere('paper.publishedDate <= :endDate', { endDate });
     }
 
 
