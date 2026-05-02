@@ -16,23 +16,23 @@ export class PapersController {
     return this.papersService.getAllPapers(dto);
   }
 
-  // arxivId 기반 단일 논문 GET
-  @Get(':arxivId')
-  getPaperByArxivId(
-    @Param('arxivId') arxivId: string, 
-  ){
-    return this.papersService.getPaperByArxivId(arxivId);
-  }
-
   @Get('category')
   getAllCategory(){
-    return this.papersService.getAllCategories();
+    return this.papersService.getAllresearchFields();
   }
 
   @Get('authors')
   @Roles(RolesEnum.ADMIN)
   getAllAuthors(){
     return this.papersService.getAllAuthors();
+  }
+
+  // arxivId 기반 단일 논문 GET
+  @Get(':arxivId')
+  getPaperByArxivId(
+    @Param('arxivId') arxivId: string,
+  ){
+    return this.papersService.getPaperByArxivId(arxivId);
   }
 
   @Post('category')

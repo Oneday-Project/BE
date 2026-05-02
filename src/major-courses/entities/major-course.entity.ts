@@ -13,7 +13,7 @@ export class MajorCourse extends BaseModel {
     professor?: string[] = []; // 교수명
 
     @Column('simple-json')
-    category!: string[]; // 분야(tag)
+    fields!: string[]; // 분야(tag)
 
     @Column()
     level!: string; // 전공선택 / 전공심화
