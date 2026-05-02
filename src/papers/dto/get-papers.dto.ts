@@ -7,7 +7,7 @@ export class GetPapersDto extends BasePaginationDto{
     @IsOptional()
     keyword?: string;
 
-    @IsString({ each: true }) // 배열의 각 요소가 string인지 검사
+    @IsString({ each: true }) 
     @IsOptional()
     @Transform(({ value }) => Array.isArray(value) ? value : [value])
     tags?: string[];
