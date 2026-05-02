@@ -2,9 +2,10 @@
 import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from "typeorm";
 // [변경] Papers 순환 참조 방지를 위해 forwardRef 패턴 사용
 import { Papers } from "./papers.entity";
+import { BaseModel } from "src/common/entities/base.entity";
 
 @Entity()
-export class Author {
+export class Author extends BaseModel {
     @PrimaryGeneratedColumn()
     id!: number;
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { PapersService } from './papers.service';
 import { GetPapersDto } from './dto/get-papers.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
@@ -8,6 +8,7 @@ import { RolesEnum } from 'src/users/const/roles.const';
 export class PapersController {
   constructor(private readonly papersService: PapersService) {}
 
+  // 조건에 해당하는 모든 논문 GET
   @Get()
   getAllPapers(
     @Query() dto: GetPapersDto,
@@ -15,12 +16,13 @@ export class PapersController {
     return this.papersService.getAllPapers(dto);
   }
 
-  // @Get()
-  // getPaperByArxivId(
-  //   @Query('arxivId') arxivId: string, 
-  // ){
-
-  // }
+  // arxivId 기반 단일 논문 GET
+  @Get(':arxivId')
+  getPaperByArxivId(
+    @Param('arxivId') arxivId: string, 
+  ){
+    return this.papersService.getPaperByArxivId(arxivId);
+  }
 
   @Get('category')
   getAllCategory(){
