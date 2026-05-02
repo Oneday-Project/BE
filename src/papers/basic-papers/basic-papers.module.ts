@@ -7,7 +7,7 @@ import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
 import { Papers } from '../entities/papers.entity';
 // [변경] integrate() 에서 Author, Category FK 처리를 위해 레포지토리 추가
 import { Author } from '../entities/author.entity';
-import { ResearchField } from '../entities/research-fields.entity';
+import { ResearchField } from '../../research-fields/entities/research-fields.entity';
 
 @Module({
   imports: [

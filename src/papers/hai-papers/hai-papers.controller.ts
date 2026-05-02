@@ -9,12 +9,17 @@ export class HaiPapersController {
 
   @Post()
   createPaper(@Body() dto: CreateHAIpaperDto) {
-    return this.haiPapersService.createPaper(dto);
+    return this.haiPapersService.createHaiPaper(dto);
   }
 
   @Get()
   getAllPapers() {
-    return this.haiPapersService.getAllPapers();
+    return this.haiPapersService.getAllHaiPapers();
+  }
+
+  @Get(':id')
+  getPaper(@Param('id', ParseIntPipe) id: number) {
+    return this.haiPapersService.getHaiPaper(id);
   }
 
   @Patch(':id')
@@ -22,11 +27,11 @@ export class HaiPapersController {
     @Param('id', ParseIntPipe) id: number, 
     @Body() dto: UpdatHAIpaperDto,
   ){
-    return this.haiPapersService.updatePaper(id, dto);
+    return this.haiPapersService.updateHaiPaper(id, dto);
   }
 
   @Delete(':id')
   deletePaper(@Param('id', ParseIntPipe) id: number) {
-    return this.haiPapersService.deletePaper(id);
+    return this.haiPapersService.deleteHaiPaper(id);
   }
 }
