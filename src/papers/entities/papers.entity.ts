@@ -1,7 +1,5 @@
 import { BaseModel } from 'src/common/entities/base.entity';
-// [변경] ManyToMany, JoinTable 데코레이터 추가
 import { Column, Entity, JoinTable, ManyToMany, OneToOne, PrimaryColumn } from 'typeorm';
-// [변경] Author, Category 엔티티 임포트 추가
 import { Author } from './author.entity';
 import { Category } from './category.entity';
 import { PaperAiSummary } from 'src/ai-services/entities/paper-ai-summaries.entity';
@@ -17,7 +15,6 @@ export class Papers extends BaseModel {
     @Column()
     title!: string; // 제목
 
-    // [변경] authors: string[] (simple-json) → Author 테이블과 ManyToMany FK 관계
     @ManyToMany(() => Author, (author) => author.papers, { cascade: ['insert'] })
     @JoinTable({ name: 'paper_authors' })
     authors!: Author[];
@@ -25,7 +22,6 @@ export class Papers extends BaseModel {
     @Column({ type: 'text', nullable: true })
     abstract!: string; // 초록
 
-    // [변경] category: string[] (simple-json) → Category 테이블과 ManyToMany FK 관계
     @ManyToMany(() => Category, (category) => category.papers)
     @JoinTable({ name: 'paper_categories' })
     categories!: Category[];

@@ -37,13 +37,13 @@ import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity
         DB_USERNAME: Joi.string().required(),
         DB_PASSWORD: Joi.string().required(),
         DB_DATABASE: Joi.string().required(),
-        // HASH_ROUNDS: Joi.number().required(),
-        // ACCESS_TOKEN_SECRET: Joi.string().required(),
-        // REFRESH_TOKEN_SECRET: Joi.string().required(),
+        HASH_ROUNDS: Joi.number().required(),
+        ACCESS_TOKEN_SECRET: Joi.string().required(),
+        REFRESH_TOKEN_SECRET: Joi.string().required(),
       })
     }),
     TypeOrmModule.forRootAsync({ 
-      useFactory: (configService: ConfigService) => ({ // ConfigService 주입
+      useFactory: (configService: ConfigService) => ({ 
         type: configService.get<string>(envVariableKeys.dbType) as "postgres",
         host: configService.get<string>(envVariableKeys.dbHost),
         port: configService.get<number>(envVariableKeys.dbPort),
