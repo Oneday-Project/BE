@@ -20,6 +20,8 @@ import { AuthModule } from './auth/auth.module';
 import { AccessTokenGuard } from './auth/guard/bearer-token.guard';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RolesGuard } from './auth/guard/roles.guard';
+import { Author } from './papers/entities/author.entity';
+import { Category } from './papers/entities/category.entity';
 
 @Module({
   imports: [
@@ -53,6 +55,8 @@ import { RolesGuard } from './auth/guard/roles.guard';
           HAIpapers,
           MajorCourse,
           User,
+          Author,
+          Category,
         ],
         synchronize: true,
       }),
@@ -61,7 +65,9 @@ import { RolesGuard } from './auth/guard/roles.guard';
     PapersModule, 
     BasicPapersModule, 
     HaiPapersModule, 
-    MajorCoursesModule, UsersModule, AuthModule,
+    MajorCoursesModule, 
+    UsersModule, 
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService,
