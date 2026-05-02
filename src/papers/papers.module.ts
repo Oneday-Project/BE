@@ -5,14 +5,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Papers } from './entities/papers.entity';
 import { CommonModule } from 'src/common/common.module';
 import { Author } from './entities/author.entity';
-import { Category } from './entities/category.entity';
+import { ResearchField } from './entities/research-fields.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Papers,
       Author,
-      Category,
+      ResearchField,
     ]),
     CommonModule,
   ],

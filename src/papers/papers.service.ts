@@ -4,7 +4,7 @@ import { Papers } from './entities/papers.entity';
 import { Repository } from 'typeorm';
 import { GetPapersDto } from './dto/get-papers.dto';
 import { CommonService } from 'src/common/common.service';
-import { Category } from './entities/category.entity';
+import { ResearchField } from './entities/research-fields.entity';
 import { Author } from './entities/author.entity';
 
 @Injectable()
@@ -12,8 +12,8 @@ export class PapersService {
   constructor(
     @InjectRepository(Papers)
     private readonly papersRepository: Repository<Papers>,
-    @InjectRepository(Category)
-    private readonly categoriesRepository: Repository<Category>,
+    @InjectRepository(ResearchField)
+    private readonly researchFieldsRepository: Repository<ResearchField>,
     @InjectRepository(Author)
     private readonly authorsRepository: Repository<Author>,
     private readonly commonService: CommonService,
@@ -26,14 +26,14 @@ export class PapersService {
 
     const qb = this.papersRepository.createQueryBuilder('paper')
       .leftJoinAndSelect('paper.authors', 'author')
-      .leftJoinAndSelect('paper.categories', 'category');
+      .leftJoinAndSelect('paper.researchFields', 'researchField');
 
     // 분야로 검색하는 기능
     if (tags && tags.length > 0) {
       const tagSubQb = this.papersRepository.createQueryBuilder('paper')
         .select('paper."arxivId"')
-        .leftJoin('paper.categories', 'category')
-        .where('category.name IN (:...tags)', { tags })
+        .leftJoin('paper.researchFields', 'researchField')
+        .where('researchField.name IN (:...tags)', { tags })
         .distinct(true);
   
       // getQuery() - QueryBuilder를 "SQL문(문자열)"으로 바꿔주는 함수
@@ -95,7 +95,7 @@ export class PapersService {
       },
       relations: {
         authors: true,
-        categories: true,
+        researchFields: true,
         aiSummary: true,
       }
     })
@@ -110,8 +110,8 @@ export class PapersService {
 
 
   // 모든 분야 GET
-  async getAllCategories(){
-    return this.categoriesRepository.find();
+  async getAllresearchFields(){
+    return this.researchFieldsRepository.find();
   }
 
   // 모든 저자 GET
@@ -121,9 +121,9 @@ export class PapersService {
 
   // 분야 생성
   async createCategory(name: string){
-    const category = this.categoriesRepository.create({name});
+    const category = this.researchFieldsRepository.create({name});
 
-    return this.categoriesRepository.save(category);
+    return this.researchFieldsRepository.save(category);
   }
 
 }
