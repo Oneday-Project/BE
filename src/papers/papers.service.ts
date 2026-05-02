@@ -21,12 +21,13 @@ export class PapersService {
 
   async getAllPapers(dto: GetPapersDto) {
 
-    const { keyword, tags } = dto;
+    const { keyword, tags, yearRange, dateFrom, dateTo } = dto;
 
     const qb = this.papersRepository.createQueryBuilder('paper')
       .leftJoinAndSelect('paper.authors', 'author')
       .leftJoinAndSelect('paper.categories', 'category');
 
+    // 분야로 검색하는 기능
     if (tags && tags.length > 0) {
       const tagSubQb = this.papersRepository.createQueryBuilder('paper')
         .select('paper."arxivId"')
@@ -43,6 +44,7 @@ export class PapersService {
         .setParameters({ ...qb.getParameters(), ...tagSubQb.getParameters() });
     }
 
+    // 검색창 기능(검색창에 특정 단어를 검색하면 논문 제목, 초록, 저자에서 찾아서 논문 검색)
     if (keyword) {
       const keywordSubQb = this.papersRepository.createQueryBuilder('paper')
         .select('paper."arxivId"')
@@ -56,6 +58,25 @@ export class PapersService {
       qb.andWhere(`paper."arxivId" IN (${keywordSubQb.getQuery()})`)
         .setParameters({ ...qb.getParameters(), ...keywordSubQb.getParameters() });
     }
+
+    // 최근 몇년으로 검색하는 기능
+    if (yearRange) { // yearRange = 3
+      const from = new Date(); // ex. 2026.05.01
+      from.setFullYear(from.getFullYear() - yearRange); // ex. 2023
+      const fromStr = from.toISOString().split('T')[0]; // "2023.05.01T00:00:00.000Z" -> "2023-05-01"
+      qb.andWhere('paper.publishedDate >= :from', { from: fromStr });
+    }
+
+    // 직접 기간 설정
+    if (dateFrom) {
+      qb.andWhere('paper.publishedDate >= :dateFrom', { dateFrom });
+    }
+
+    // 직접 기간 설정
+    if (dateTo) {
+      qb.andWhere('paper.publishedDate <= :dateTo', { dateTo });
+    }
+
 
     // 커서 기반 페이지네이션
     return this.commonService.cursorPagination(qb, dto);
