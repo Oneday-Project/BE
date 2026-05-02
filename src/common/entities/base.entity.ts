@@ -1,4 +1,5 @@
-import { CreateDateColumn, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Exclude } from "class-transformer";
+import { CreateDateColumn, UpdateDateColumn } from "typeorm";
 
 // 공통적으로 사용하는 id, updatedAt, createdAt 
 // 이렇게 3개의 프로퍼티들을 정의한 베이스 클래스를 만들 것임
@@ -6,9 +7,15 @@ import { CreateDateColumn, PrimaryGeneratedColumn, UpdateDateColumn } from "type
 export abstract class BaseModel {
 
     @UpdateDateColumn()
+    @Exclude({
+        toPlainOnly: true,
+    })
     updatedAt!: Date;
 
     @CreateDateColumn()
+    @Exclude({
+        toPlainOnly: true,
+    })
     createdAt!: Date;
 }
 

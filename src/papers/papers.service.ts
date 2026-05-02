@@ -23,24 +23,11 @@ export class PapersService {
       qb.where('paper.title LIKE :title', {title: `%${title}%`});
     }
 
-    // // 커서 기반 페이지네이션
-    // const { data, nextCursor, hasNext } = await this.commonService.applyCursorPaginationParamsToQb(qb, dto);
+    // 커서 기반 페이지네이션
+    return this.commonService.cursorPagination(qb, dto);
 
-    // return {
-    //     data,
-    //     nextCursor,
-    //     hasNext,
-    // };
+    // // 페이지 기반 페이지네이션
+    // return this.commonService.pagePagination(qb, dto);
 
-    // 페이지 기반 페이지네이션
-    const { data, total, totalPages, page } = await this.commonService.applyPagePaginationParamsToQb(qb, dto);
-
-    return {
-        data,
-        total,
-        totalPages,
-        page,
-    };
   }
-
 }
