@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Papers } from './entities/papers.entity';
 import { Repository } from 'typeorm';
@@ -19,6 +19,7 @@ export class PapersService {
     private readonly commonService: CommonService,
   ){}
 
+  // 조건에 해당되는 모든 논문 가져오기(페이지네이션 적용)
   async getAllPapers(dto: GetPapersDto) {
 
     const { keyword, tags, yearRange, dateFrom, dateTo } = dto;
@@ -86,18 +87,39 @@ export class PapersService {
 
   }
 
-  // async getPaperByArxivId(){
+  // arxivId 기반 단일 논문 GET
+  async getPaperByArxivId(arxivId: string){
+    const paper = this.papersRepository.findOne({
+      where: {
+        arxivId,
+      },
+      relations: {
+        authors: true,
+        categories: true,
+        aiSummary: true,
+      }
+    })
 
-  // }
+    if(!paper){
+      throw new NotFoundException('존재하지 않는 논문입니다!');
+    }
 
+    return paper;
+  }
+
+
+
+  // 모든 분야 GET
   async getAllCategories(){
     return this.categoriesRepository.find();
   }
 
+  // 모든 저자 GET
   async getAllAuthors(){
     return this.authorsRepository.find();
   }
 
+  // 분야 생성
   async createCategory(name: string){
     const category = this.categoriesRepository.create({name});
 

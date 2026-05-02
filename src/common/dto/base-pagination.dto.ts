@@ -20,9 +20,9 @@ export class BasePaginationDto {
     @Transform(({ value }) => Array.isArray(value) ? value : [value])
     // 들어가는 데이터 예시
     // [id_DESC, likeCount_DESC]
-    order!: string[];
+    order: string[] = ['publishedDate_DESC'];
 
     @IsInt()
     @IsOptional()
-    take: number = 5; 
+    take: number = 12; 
 }
