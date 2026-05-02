@@ -6,7 +6,7 @@ import { BasePaginationDto } from "./dto/base-pagination.dto";
 export class CommonService {
     constructor(){}
 
-    async applyPagePaginationParamsToQb<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
+    async pagePagination<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
         const {page, take, order} = dto; // order 추가
 
         const skip = (page! - 1) * take;
@@ -25,7 +25,7 @@ export class CommonService {
         };
     }
 
-    async applyCursorPaginationParamsToQb<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
+    async cursorPagination<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
         let {cursor, order, take} = dto;
 
         if(cursor){

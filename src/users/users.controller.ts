@@ -1,11 +1,11 @@
-import { Controller, Get, Body, Patch, Param, Delete, ParseIntPipe, UseInterceptors, ClassSerializerInterceptor } from '@nestjs/common';
+import { Controller, Get, Body, Patch, Param, Delete, ParseIntPipe, UseInterceptors, ClassSerializerInterceptor, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { RolesEnum } from './const/roles.const';
+import { IsMyInfoOrAdminGuard } from 'src/auth/guard/is-resource-mine-or-admin.guard';
 @Controller('users')
-@UseInterceptors(ClassSerializerInterceptor)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -16,21 +16,24 @@ export class UsersController {
     return this.usersService.findAllUser();
   }
 
-  @Get(':id')
-  findUserById(@Param('id', ParseIntPipe) id: number) {
+  @Get(':userId')
+  @UseGuards(IsMyInfoOrAdminGuard)
+  findUserById(@Param('userId', ParseIntPipe) id: number) {
     return this.usersService.findUserById(id);
   }
 
-  @Patch(':id')
+  @Patch(':userId')
+  @UseGuards(IsMyInfoOrAdminGuard)
   updateUser(
-    @Param('id', ParseIntPipe) id: number, 
+    @Param('userId', ParseIntPipe) id: number, 
     @Body() updateUserDto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(id, updateUserDto);
   }
 
-  @Delete(':id')
-  removeUser(@Param('id', ParseIntPipe) id: number) {
+  @Delete(':userId')
+  @UseGuards(IsMyInfoOrAdminGuard)
+  removeUser(@Param('userId', ParseIntPipe) id: number) {
     return this.usersService.removeUser(id);
   }
 }
