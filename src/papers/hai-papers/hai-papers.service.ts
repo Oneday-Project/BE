@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
@@ -14,16 +14,30 @@ export class HaiPapersService {
     private readonly haipapersRepository: Repository<HAIpapers>,
   ) {}
 
-  async createPaper(dto: CreateHAIpaperDto) {
+  async createHaiPaper(dto: CreateHAIpaperDto) {
     const paper = this.haipapersRepository.create(dto);
     return this.haipapersRepository.save(paper);
   }
 
-  async getAllPapers() {
+  async getAllHaiPapers() {
     return this.haipapersRepository.find();
   }
 
-  async updatePaper(id: number, dto: UpdatHAIpaperDto) {
+  async getHaiPaper(id: number){
+    const haiPaper = this.haipapersRepository.findOne({
+      where: {
+        id,
+      },
+    })
+
+    if(!haiPaper){
+      throw new NotFoundException('존재하지 않는 논문입니다!');
+    }
+
+    return haiPaper;
+  }
+
+  async updateHaiPaper(id: number, dto: UpdatHAIpaperDto) {
     await this.haipapersRepository.update(id, dto);
     return this.haipapersRepository.findOne({
       where: {
@@ -32,7 +46,7 @@ export class HaiPapersService {
     }); 
   }
 
-  async deletePaper(id: number) {
+  async deleteHaiPaper(id: number) {
     await this.haipapersRepository.delete(id);
   }
 }

@@ -21,9 +21,10 @@ import { AccessTokenGuard } from './auth/guard/bearer-token.guard';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RolesGuard } from './auth/guard/roles.guard';
 import { Author } from './papers/entities/author.entity';
-import { ResearchField } from './papers/entities/research-fields.entity';
+import { ResearchField } from './research-fields/entities/research-fields.entity';
 import { AiServicesModule } from './ai-services/ai-services.module';
 import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity';
+import { ResearchFieldsModule } from './research-fields/research-fields.module';
 
 @Module({
   imports: [
@@ -70,7 +71,7 @@ import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity
     HaiPapersModule, 
     MajorCoursesModule, 
     UsersModule, 
-    AuthModule, AiServicesModule,
+    AuthModule, AiServicesModule, ResearchFieldsModule,
   ],
   controllers: [AppController],
   providers: [AppService,

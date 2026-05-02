@@ -16,9 +16,12 @@ export class PapersController {
     return this.papersService.getAllPapers(dto);
   }
 
-  @Get('category')
-  getAllCategory(){
-    return this.papersService.getAllresearchFields();
+  // arxivId 기반 단일 논문 GET
+  @Get('paper/:arxivId')
+  getPaperByArxivId(
+    @Param('arxivId') arxivId: string,
+  ){
+    return this.papersService.getPaperByArxivId(arxivId);
   }
 
   @Get('authors')
@@ -27,19 +30,4 @@ export class PapersController {
     return this.papersService.getAllAuthors();
   }
 
-  // arxivId 기반 단일 논문 GET
-  @Get(':arxivId')
-  getPaperByArxivId(
-    @Param('arxivId') arxivId: string,
-  ){
-    return this.papersService.getPaperByArxivId(arxivId);
-  }
-
-  @Post('category')
-  @Roles(RolesEnum.ADMIN)
-  createCategory(
-    @Body('name') name: string,
-  ){
-    return this.papersService.createCategory(name);
-  }
 }
