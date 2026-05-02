@@ -22,7 +22,7 @@ export class PapersService {
   // 조건에 해당되는 모든 논문 가져오기(페이지네이션 적용)
   async getAllPapers(dto: GetPapersDto) {
 
-    const { keyword, tags, yearRange, dateFrom, dateTo } = dto;
+    const { keyword, tags, yearRange, startDate, endDate } = dto;
 
     const qb = this.papersRepository.createQueryBuilder('paper')
       .leftJoinAndSelect('paper.authors', 'author')
@@ -69,13 +69,13 @@ export class PapersService {
     }
 
     // 직접 기간 설정
-    if (dateFrom) {
-      qb.andWhere('paper.publishedDate >= :dateFrom', { dateFrom });
+    if (startDate) {
+      qb.andWhere('paper.publishedDate >= :startDate', { startDate });
     }
 
     // 직접 기간 설정
-    if (dateTo) {
-      qb.andWhere('paper.publishedDate <= :dateTo', { dateTo });
+    if (endDate) {
+      qb.andWhere('paper.publishedDate <= :endDate', { endDate });
     }
 
 
