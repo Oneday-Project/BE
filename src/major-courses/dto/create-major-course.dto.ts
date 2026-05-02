@@ -5,7 +5,7 @@ export class CreateMajorCourseDto {
 
         professor?: string[]; // 교수명
 
-        category!: string[]; // 분야(tag)
+        fields!: string[]; // 분야(tag)
 
         level!: string; // 전공선택 / 전공심화
 
