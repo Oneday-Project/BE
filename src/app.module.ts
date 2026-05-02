@@ -21,7 +21,7 @@ import { AccessTokenGuard } from './auth/guard/bearer-token.guard';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RolesGuard } from './auth/guard/roles.guard';
 import { Author } from './papers/entities/author.entity';
-import { Category } from './papers/entities/category.entity';
+import { ResearchField } from './papers/entities/research-fields.entity';
 import { AiServicesModule } from './ai-services/ai-services.module';
 import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity';
 
@@ -58,7 +58,7 @@ import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity
           MajorCourse,
           User,
           Author,
-          Category,
+          ResearchField,
           PaperAiSummary,
         ],
         synchronize: true,
