@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsOptional, IsString } from "class-validator";
+import { IsNumber, IsOptional, IsString } from "class-validator";
 import { BasePaginationDto } from "src/common/dto/base-pagination.dto";
 
 export class GetPapersDto extends BasePaginationDto{
@@ -11,4 +11,16 @@ export class GetPapersDto extends BasePaginationDto{
     @IsOptional()
     @Transform(({ value }) => Array.isArray(value) ? value : [value])
     tags?: string[];
+
+    @IsNumber()
+    @IsOptional()
+    yearRange?: number;
+
+    @IsString()
+    @IsOptional()
+    dateFrom?: string;
+
+    @IsString()
+    @IsOptional()
+    dateTo?: string;
 }
