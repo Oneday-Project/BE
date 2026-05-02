@@ -3,7 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { RawArxiv } from '../entities/raw-arxiv.entity';
 import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
 import { Papers } from '../entities/papers.entity';
-import { DataSource, DeepPartial, In, Repository } from 'typeorm';
+// [변경] Author, Category 엔티티 임포트 추가
+import { Author } from '../entities/author.entity';
+import { Category } from '../entities/category.entity';
+// [변경] IsNull 추가 — authorId 없는 저자 조회 시 사용
+import { DataSource, DeepPartial, In, IsNull, Repository } from 'typeorm';
 import { parseStringPromise } from 'xml2js'; // arXiv API 응답(XML)을 JavaScript 객체로 파싱하는 라이브러리
 import { ConfigService } from '@nestjs/config';
 import { envVariableKeys } from 'src/common/const/env.const';
@@ -72,14 +76,19 @@ interface ArxivParsed { // arXiv API 응답에서 파싱한 논문 데이터의 
 @Injectable()
 export class BasicPapersService {
   constructor(
-    @InjectRepository(RawArxiv) 
-    private readonly arxivRepository: Repository<RawArxiv>, 
-    @InjectRepository(RawSemanticScholar) 
+    @InjectRepository(RawArxiv)
+    private readonly arxivRepository: Repository<RawArxiv>,
+    @InjectRepository(RawSemanticScholar)
     private readonly ss2Repository: Repository<RawSemanticScholar>,
-    @InjectRepository(Papers) 
+    @InjectRepository(Papers)
     private readonly papersRepository: Repository<Papers>,
+    // [변경] 저자 / 분야 FK 처리용 레포지토리 추가
+    @InjectRepository(Author)
+    private readonly authorRepository: Repository<Author>,
+    @InjectRepository(Category)
+    private readonly categoryRepository: Repository<Category>,
     private readonly configService: ConfigService,
-    private readonly dataSource: DataSource, 
+    private readonly dataSource: DataSource,
   ) {}
 
   
@@ -505,12 +514,6 @@ export class BasicPapersService {
     // ── 2. raw_semantic_scholar 전체 조회 → arxivId 기준 Map 생성 ─────────
     const ss2List = await this.ss2Repository.find(); // raw_semantic_scholar 테이블 전체 데이터 조회
     const ss2Map = new Map(ss2List.map((s) => [s.arxivId, s])); // arxivId를 키로 Map 생성 (arXiv 데이터와 빠르게 매핑하기 위함)
-    // ss2Map 예시
-    // Map {
-    //   "2301.00001" => { 논문 정보 },
-    //   "2301.00002" => { 논문 정보 },
-    //   ...
-    // }
 
     // ── 3. INNER JOIN — 양쪽 모두 있는 논문만 추출 ───────────────────────
     const joined = arxivList.filter((a) => ss2Map.has(a.arxivId)); // raw_arxiv 중 SS 데이터도 있는 논문만 필터링 (inner join 효과)
@@ -527,34 +530,119 @@ export class BasicPapersService {
     const alreadyExists = existingIds.size; // 이미 papers에 있는 논문 수
     const toInsert = joined.filter((a) => !existingIds.has(a.arxivId)); // 아직 papers에 없는 논문만 추출
 
-    // ── 5. papers 저장 ────────────────────────────────────────────────────
-    if (toInsert.length > 0) { // 삽입할 데이터가 있을 때만
-      const newPapers = toInsert.map((a) => {
-        const ss = ss2Map.get(a.arxivId)!; // arXiv 데이터에 대응하는 SS 데이터 가져오기 (위에서 inner join 했으므로 반드시 존재)
-        return this.papersRepository.create({ // arXiv + SS 데이터를 합쳐 papers 엔티티 생성
-          arxivId:       a.arxivId,
-          title:         a.title,
-          authors:       a.authors,
-          abstract:      a.abstract,
-          category:      a.category,
-          pdfUrl:        a.pdfUrl,
-          doi:           ss.doi,           // SS에서 가져온 DOI
-          publishedDate: ss.publishedDate, // SS에서 가져온 출판일
-          citationCount: ss.citationCount, // SS에서 가져온 인용 수
-          influenceScore: ss.influenceScore, // SS에서 가져온 영향력 점수
-          journal:       ss.journal,       // SS에서 가져온 저널명
-        });
-      });
+    // ── 5. [변경] 분야(Category) FK 처리 ─────────────────────────────────
+    // 분야 테이블은 이미 11개 AI 카테고리가 저장된 상태이므로 전체 조회 후 Map으로 변환
+    // arXiv 카테고리 코드(예: cs.AI)와 Category.name이 일치하는 항목만 연결
+    const allCategories = await this.categoryRepository.find();
+    const categoryMap = new Map(allCategories.map((c) => [c.name, c]));
 
-      const CHUNK = 500; // 한 번에 저장할 최대 레코드 수 (대량 저장 시 메모리/쿼리 부하 분산)
-      for (let i = 0; i < newPapers.length; i += CHUNK) { // CHUNK 단위로 나눠서 저장
-        await this.papersRepository.save(newPapers.slice(i, i + CHUNK)); // 현재 청크 저장
+    // ── 6. [변경] SS API에서 저자 정보(authorId 포함) 일괄 조회 ──────────
+    // SS authors 필드에는 { authorId, name }이 포함 → 동명이인 구분에 사용
+    const ssAuthorMap = await this.fetchSsAuthors(toInsert.map((a) => a.arxivId));
+    // Map<arxivId, { authorId?: string; name: string }[]>
+
+    // ── 7. [변경] 저자(Author) FK 처리 — authorId 기준 dedup ─────────────
+    // 삽입 대상 전체 논문에서 등장하는 저자를 모두 수집 (중복 제거)
+    // key: SS authorId가 있으면 authorId, 없으면 `name:${name}` (arXiv only)
+    const uniqueAuthorDefs = new Map<string, { name: string; authorId?: string }>();
+
+    for (const paper of toInsert) {
+      const ssAuthors = ssAuthorMap.get(paper.arxivId);
+      // SS에서 찾은 저자가 있으면 authorId 포함 버전, 없으면 arXiv 이름만 사용
+      const authorsToProcess: { name: string; authorId?: string }[] =
+        ssAuthors ?? (paper.authors ?? []).map((name) => ({ name }));
+      for (const a of authorsToProcess) {
+        const key = a.authorId ? a.authorId : `name:${a.name}`;
+        if (!uniqueAuthorDefs.has(key)) uniqueAuthorDefs.set(key, a); 
       }
     }
 
-    const saved = toInsert.length; // 저장된 논문 수
+    // authorId 있는 저자: authorId 기준으로 DB 조회
+    const authorIdValues = [...uniqueAuthorDefs.values()]
+      .filter((v) => v.authorId)
+      .map((v) => v.authorId!);
+    const existingByAuthorId = authorIdValues.length > 0
+      ? await this.authorRepository.findBy({ authorId: In(authorIdValues) })
+      : [];
 
-    return { total: joined.length, saved, alreadyExists }; // 통합 결과 반환
+    // authorId 없는 저자: name 기준으로 DB 조회 (authorId가 null인 행만)
+    const nameOnlyValues = [...uniqueAuthorDefs.values()]
+      .filter((v) => !v.authorId)
+      .map((v) => v.name);
+    const existingByName = nameOnlyValues.length > 0
+      ? await this.authorRepository.find({ where: { name: In(nameOnlyValues), authorId: IsNull() } })
+      : [];
+
+    // resolvedMap: dedup key → 실제 Author 엔티티
+    const resolvedMap = new Map<string, Author>();
+    existingByAuthorId.forEach((a) => resolvedMap.set(a.authorId!, a));
+    existingByName.forEach((a) => resolvedMap.set(`name:${a.name}`, a));
+
+    // DB에 없는 저자만 일괄 생성
+    const toCreateDefs = [...uniqueAuthorDefs.entries()]
+      .filter(([key]) => !resolvedMap.has(key))
+      .map(([, v]) => this.authorRepository.create({ name: v.name, authorId: v.authorId }));
+
+    // PostgreSQL 파라미터 한도(65535) 초과 방지 — author는 2컬럼이므로 최대 ~32767행
+    // 안전하게 500 단위로 청크 저장
+    const AUTHOR_CHUNK = 500;
+    for (let i = 0; i < toCreateDefs.length; i += AUTHOR_CHUNK) {
+      const created = await this.authorRepository.save(toCreateDefs.slice(i, i + AUTHOR_CHUNK));
+      created.forEach((a) => {
+        const key = a.authorId ?? `name:${a.name}`;
+        resolvedMap.set(key, a);
+      });
+    }
+
+    // ── 8. papers 저장 ────────────────────────────────────────────────────
+    const finalToInsert: Papers[] = [];
+
+    for (const a of toInsert) {
+      const ss = ss2Map.get(a.arxivId)!; // inner join 했으므로 반드시 존재
+
+      // [변경] arXiv 카테고리 코드 → Category 엔티티 배열 (매핑 없는 코드는 제외)
+      const categoryEntities = (a.category ?? [])
+        .map((name) => categoryMap.get(name))
+        .filter((cat): cat is Category => cat !== undefined);
+
+      // [변경] 매핑되는 분야가 하나도 없으면 papers에 통합하지 않고 제외
+      if (categoryEntities.length === 0) continue;
+
+      // [변경] 저자 매핑 — SS authorId 우선, 없으면 name 기반 key로 조회
+      const ssAuthors = ssAuthorMap.get(a.arxivId);
+      const authorsToMap: { name: string; authorId?: string }[] =
+        ssAuthors ?? (a.authors ?? []).map((name) => ({ name }));
+      const authorEntities = authorsToMap
+        .map((author) => resolvedMap.get(author.authorId ?? `name:${author.name}`))
+        .filter((author): author is Author => author !== undefined);
+
+      finalToInsert.push(
+        this.papersRepository.create({
+          arxivId:        a.arxivId,
+          title:          a.title,
+          authors:        authorEntities,   // [변경] string[] → Author[] (authorId 포함)
+          abstract:       a.abstract,
+          categories:     categoryEntities, // [변경] string[] → Category[]
+          pdfUrl:         a.pdfUrl,
+          doi:            ss.doi,
+          publishedDate:  ss.publishedDate,
+          citationCount:  ss.citationCount,
+          influenceScore: ss.influenceScore,
+          journal:        ss.journal,
+        }),
+      );
+    }
+
+    const CHUNK = 500; // 한 번에 저장할 최대 레코드 수 (대량 저장 시 메모리/쿼리 부하 분산)
+    for (let i = 0; i < finalToInsert.length; i += CHUNK) {
+      await this.papersRepository.save(finalToInsert.slice(i, i + CHUNK));
+    }
+
+    const saved = finalToInsert.length;
+    // [변경] 분야 미매핑으로 제외된 논문 수 반환
+    const categorySkipped = toInsert.length - saved;
+
+    return { total: joined.length, saved, alreadyExists, categorySkipped };
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -733,6 +821,50 @@ export class BasicPapersService {
 
     if (newRecords.length > 0) await this.arxivRepository.save(newRecords); // 새 레코드가 있을 때만 저장
     return { saved: newRecords.length, alreadyExists }; // 저장 결과 반환
+  }
+
+  // ── [변경] SS batch API → 저자 정보(authorId 포함) 조회 ─────────────────────
+  // arxivId 목록을 받아 SS에서 authors 필드를 가져온 뒤 Map<arxivId, 저자[]>로 반환
+  // SS authors 예시: [{ authorId: "1741101", name: "Ashish Vaswani" }, ...]
+  private async fetchSsAuthors(
+    arxivIds: string[],
+  ): Promise<Map<string, { authorId?: string; name: string }[]>> {
+    if (arxivIds.length === 0) return new Map();
+
+    const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string;
+    const AUTHOR_FIELDS = 'paperId,externalIds,authors'; // authorId, name 포함된 필드
+    const result = new Map<string, { authorId?: string; name: string }[]>();
+
+    for (let i = 0; i < arxivIds.length; i += SS2_BATCH_SIZE) {
+      const batch = arxivIds.slice(i, i + SS2_BATCH_SIZE);
+
+      const response = await fetch(`${SS2_BATCH_URL}?fields=${AUTHOR_FIELDS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': SS2_API_KEY },
+        body: JSON.stringify({ ids: batch.map((id) => `ArXiv:${id}`) }),
+      });
+
+      if (!response.ok) {
+        if (i + SS2_BATCH_SIZE < arxivIds.length) await this.delay(REQUEST_DELAY_MS);
+        continue;
+      }
+
+      const data: (any | null)[] = await response.json();
+      data.forEach((paper, idx) => {
+        if (!paper) return;
+        const arxivId = (paper.externalIds?.ArXiv as string | undefined) ?? batch[idx];
+        const authors = ((paper.authors ?? []) as any[]).map((a) => ({
+          // SS authorId가 빈 문자열("") 또는 없으면 undefined 처리
+          authorId: (a.authorId as string | undefined) || undefined,
+          name: a.name as string,
+        }));
+        result.set(arxivId, authors);
+      });
+
+      if (i + SS2_BATCH_SIZE < arxivIds.length) await this.delay(REQUEST_DELAY_MS);
+    }
+
+    return result;
   }
 
   // ── SS2 응답 → Entity 매핑 ────────────────────────────────────────────────
