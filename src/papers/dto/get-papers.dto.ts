@@ -18,9 +18,9 @@ export class GetPapersDto extends BasePaginationDto{
 
     @IsString()
     @IsOptional()
-    dateFrom?: string;
+    startDate?: string;
 
     @IsString()
     @IsOptional()
-    dateTo?: string;
+    endDate?: string;
 }
