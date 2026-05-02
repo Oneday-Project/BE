@@ -1,7 +1,7 @@
 import { BaseModel } from 'src/common/entities/base.entity';
 import { Column, Entity, JoinTable, ManyToMany, OneToOne, PrimaryColumn } from 'typeorm';
 import { Author } from './author.entity';
-import { ResearchField } from './research-fields.entity';
+import { ResearchField } from '../../research-fields/entities/research-fields.entity';
 import { PaperAiSummary } from 'src/ai-services/entities/paper-ai-summaries.entity';
 
 @Entity('papers')
