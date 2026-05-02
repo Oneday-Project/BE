@@ -1,9 +1,10 @@
 import { BaseModel } from 'src/common/entities/base.entity';
 // [변경] ManyToMany, JoinTable 데코레이터 추가
-import { Column, Entity, JoinTable, ManyToMany, PrimaryColumn } from 'typeorm';
+import { Column, Entity, JoinTable, ManyToMany, OneToOne, PrimaryColumn } from 'typeorm';
 // [변경] Author, Category 엔티티 임포트 추가
 import { Author } from './author.entity';
 import { Category } from './category.entity';
+import { PaperAiSummary } from 'src/ai-services/entities/paper-ai-summaries.entity';
 
 @Entity('papers')
 export class Papers extends BaseModel {
@@ -43,4 +44,7 @@ export class Papers extends BaseModel {
 
     @Column({ name: 'pdf_url', nullable: false })
     pdfUrl!: string; // pdf링크
+
+    @OneToOne(()=>PaperAiSummary, (aiSummary)=>aiSummary.paper)
+    aiSummary!: PaperAiSummary;
 }
