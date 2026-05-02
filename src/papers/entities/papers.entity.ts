@@ -1,5 +1,9 @@
 import { BaseModel } from 'src/common/entities/base.entity';
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+// [변경] ManyToMany, JoinTable 데코레이터 추가
+import { Column, Entity, JoinTable, ManyToMany, PrimaryColumn } from 'typeorm';
+// [변경] Author, Category 엔티티 임포트 추가
+import { Author } from './author.entity';
+import { Category } from './category.entity';
 
 @Entity('papers')
 export class Papers extends BaseModel {
@@ -12,14 +16,18 @@ export class Papers extends BaseModel {
     @Column()
     title!: string; // 제목
 
-    @Column('simple-json', {nullable: true })
-    authors!: string[]; // 저자
+    // [변경] authors: string[] (simple-json) → Author 테이블과 ManyToMany FK 관계
+    @ManyToMany(() => Author, (author) => author.papers, { cascade: ['insert'] })
+    @JoinTable({ name: 'paper_authors' })
+    authors!: Author[];
 
     @Column({ type: 'text', nullable: true })
     abstract!: string; // 초록
 
-    @Column('simple-json')
-    category!: string[]; // 분야
+    // [변경] category: string[] (simple-json) → Category 테이블과 ManyToMany FK 관계
+    @ManyToMany(() => Category, (category) => category.papers)
+    @JoinTable({ name: 'paper_categories' })
+    categories!: Category[];
 
     @Column({ name: 'published_date', nullable: true })
     publishedDate!: string; // 발행일
