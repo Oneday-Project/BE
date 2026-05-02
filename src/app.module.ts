@@ -22,6 +22,8 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RolesGuard } from './auth/guard/roles.guard';
 import { Author } from './papers/entities/author.entity';
 import { Category } from './papers/entities/category.entity';
+import { AiServicesModule } from './ai-services/ai-services.module';
+import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity';
 
 @Module({
   imports: [
@@ -57,6 +59,7 @@ import { Category } from './papers/entities/category.entity';
           User,
           Author,
           Category,
+          PaperAiSummary,
         ],
         synchronize: true,
       }),
@@ -67,7 +70,7 @@ import { Category } from './papers/entities/category.entity';
     HaiPapersModule, 
     MajorCoursesModule, 
     UsersModule, 
-    AuthModule,
+    AuthModule, AiServicesModule,
   ],
   controllers: [AppController],
   providers: [AppService,

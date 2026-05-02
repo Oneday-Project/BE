@@ -18,5 +18,6 @@ import { Category } from './entities/category.entity';
   ],
   controllers: [PapersController],
   providers: [PapersService],
+  exports: [PapersService],
 })
 export class PapersModule {}
