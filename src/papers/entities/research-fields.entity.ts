@@ -3,7 +3,7 @@ import { Papers } from "./papers.entity";
 import { BaseModel } from "src/common/entities/base.entity";
 
 @Entity()
-export class Category extends BaseModel{
+export class ResearchField extends BaseModel{
     @PrimaryGeneratedColumn()
     id!: number;
 
@@ -12,6 +12,6 @@ export class Category extends BaseModel{
     })
     name!: string;
 
-    @ManyToMany(() => Papers, (paper) => paper.categories)
+    @ManyToMany(() => Papers, (paper) => paper.researchFields)
     papers!: Papers[];
-}
+}     
