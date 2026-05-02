@@ -4,7 +4,7 @@ import { Papers } from './entities/papers.entity';
 import { Repository } from 'typeorm';
 import { GetPapersDto } from './dto/get-papers.dto';
 import { CommonService } from 'src/common/common.service';
-import { ResearchField } from './entities/research-fields.entity';
+import { ResearchField } from '../research-fields/entities/research-fields.entity';
 import { Author } from './entities/author.entity';
 
 @Injectable()
@@ -12,8 +12,6 @@ export class PapersService {
   constructor(
     @InjectRepository(Papers)
     private readonly papersRepository: Repository<Papers>,
-    @InjectRepository(ResearchField)
-    private readonly researchFieldsRepository: Repository<ResearchField>,
     @InjectRepository(Author)
     private readonly authorsRepository: Repository<Author>,
     private readonly commonService: CommonService,
@@ -109,21 +107,13 @@ export class PapersService {
 
 
 
-  // 모든 분야 GET
-  async getAllresearchFields(){
-    return this.researchFieldsRepository.find();
-  }
+
 
   // 모든 저자 GET
   async getAllAuthors(){
     return this.authorsRepository.find();
   }
 
-  // 분야 생성
-  async createCategory(name: string){
-    const category = this.researchFieldsRepository.create({name});
 
-    return this.researchFieldsRepository.save(category);
-  }
 
 }
