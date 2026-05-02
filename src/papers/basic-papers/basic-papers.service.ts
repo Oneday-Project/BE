@@ -5,7 +5,7 @@ import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
 import { Papers } from '../entities/papers.entity';
 // [변경] Author, Category 엔티티 임포트 추가
 import { Author } from '../entities/author.entity';
-import { Category } from '../entities/category.entity';
+import { ResearchField } from '../entities/research-fields.entity';
 // [변경] IsNull 추가 — authorId 없는 저자 조회 시 사용
 import { DataSource, DeepPartial, In, IsNull, Repository } from 'typeorm';
 import { parseStringPromise } from 'xml2js'; // arXiv API 응답(XML)을 JavaScript 객체로 파싱하는 라이브러리
@@ -85,8 +85,8 @@ export class BasicPapersService {
     // [변경] 저자 / 분야 FK 처리용 레포지토리 추가
     @InjectRepository(Author)
     private readonly authorRepository: Repository<Author>,
-    @InjectRepository(Category)
-    private readonly categoryRepository: Repository<Category>,
+    @InjectRepository(ResearchField)
+    private readonly categoryRepository: Repository<ResearchField>,
     private readonly configService: ConfigService,
     private readonly dataSource: DataSource,
   ) {}
@@ -508,6 +508,8 @@ export class BasicPapersService {
   // ══════════════════════════════════════════════════════════════════
 
   async integrate() {
+    const QUERY_CHUNK = 1000; // PostgreSQL 파라미터 한도 초과 방지용 청크 크기
+
     // ── 1. raw_arxiv 전체 조회 ────────────────────────────────────────────
     const arxivList = await this.arxivRepository.find(); // raw_arxiv 테이블 전체 데이터 조회
 
@@ -522,9 +524,10 @@ export class BasicPapersService {
     const joinedIds = joined.map((a) => a.arxivId); // inner join 결과의 arxivId 목록
     const existingIds = new Set<string>(); // 이미 papers 테이블에 있는 ID를 담을 Set
 
-    if (joinedIds.length > 0) { // 대상 논문이 있을 때만 DB 조회
-      const existing = await this.papersRepository.findBy({ arxivId: In(joinedIds) }); // papers 테이블에 이미 있는 논문 조회
-      existing.forEach((p) => existingIds.add(p.arxivId)); // Set에 추가
+    for (let i = 0; i < joinedIds.length; i += QUERY_CHUNK) { // 청크 단위로 DB 조회 (파라미터 한도 초과 방지)
+      const chunk = joinedIds.slice(i, i + QUERY_CHUNK);
+      const existing = await this.papersRepository.findBy({ arxivId: In(chunk) });
+      existing.forEach((p) => existingIds.add(p.arxivId));
     }
 
     const alreadyExists = existingIds.size; // 이미 papers에 있는 논문 수
@@ -557,21 +560,27 @@ export class BasicPapersService {
       }
     }
 
-    // authorId 있는 저자: authorId 기준으로 DB 조회
+    // authorId 있는 저자: authorId 기준으로 DB 조회 (청크 처리)
     const authorIdValues = [...uniqueAuthorDefs.values()]
       .filter((v) => v.authorId)
       .map((v) => v.authorId!);
-    const existingByAuthorId = authorIdValues.length > 0
-      ? await this.authorRepository.findBy({ authorId: In(authorIdValues) })
-      : [];
+    const existingByAuthorId: Author[] = [];
+    for (let i = 0; i < authorIdValues.length; i += QUERY_CHUNK) {
+      const chunk = authorIdValues.slice(i, i + QUERY_CHUNK);
+      const rows = await this.authorRepository.findBy({ authorId: In(chunk) });
+      existingByAuthorId.push(...rows);
+    }
 
-    // authorId 없는 저자: name 기준으로 DB 조회 (authorId가 null인 행만)
+    // authorId 없는 저자: name 기준으로 DB 조회 (authorId가 null인 행만, 청크 처리)
     const nameOnlyValues = [...uniqueAuthorDefs.values()]
       .filter((v) => !v.authorId)
       .map((v) => v.name);
-    const existingByName = nameOnlyValues.length > 0
-      ? await this.authorRepository.find({ where: { name: In(nameOnlyValues), authorId: IsNull() } })
-      : [];
+    const existingByName: Author[] = [];
+    for (let i = 0; i < nameOnlyValues.length; i += QUERY_CHUNK) {
+      const chunk = nameOnlyValues.slice(i, i + QUERY_CHUNK);
+      const rows = await this.authorRepository.find({ where: { name: In(chunk), authorId: IsNull() } });
+      existingByName.push(...rows);
+    }
 
     // resolvedMap: dedup key → 실제 Author 엔티티
     const resolvedMap = new Map<string, Author>();
@@ -603,7 +612,7 @@ export class BasicPapersService {
       // [변경] arXiv 카테고리 코드 → Category 엔티티 배열 (매핑 없는 코드는 제외)
       const categoryEntities = (a.category ?? [])
         .map((name) => categoryMap.get(name))
-        .filter((cat): cat is Category => cat !== undefined);
+        .filter((cat): cat is ResearchField => cat !== undefined);
 
       // [변경] 매핑되는 분야가 하나도 없으면 papers에 통합하지 않고 제외
       if (categoryEntities.length === 0) continue;
@@ -622,7 +631,7 @@ export class BasicPapersService {
           title:          a.title,
           authors:        authorEntities,   // [변경] string[] → Author[] (authorId 포함)
           abstract:       a.abstract,
-          categories:     categoryEntities, // [변경] string[] → Category[]
+          researchFields:     categoryEntities, // [변경] string[] → Category[]
           pdfUrl:         a.pdfUrl,
           doi:            ss.doi,
           publishedDate:  ss.publishedDate,

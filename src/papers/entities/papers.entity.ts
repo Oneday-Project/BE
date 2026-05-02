@@ -1,7 +1,7 @@
 import { BaseModel } from 'src/common/entities/base.entity';
 import { Column, Entity, JoinTable, ManyToMany, OneToOne, PrimaryColumn } from 'typeorm';
 import { Author } from './author.entity';
-import { Category } from './category.entity';
+import { ResearchField } from './research-fields.entity';
 import { PaperAiSummary } from 'src/ai-services/entities/paper-ai-summaries.entity';
 
 @Entity('papers')
@@ -22,9 +22,9 @@ export class Papers extends BaseModel {
     @Column({ type: 'text', nullable: true })
     abstract!: string; // 초록
 
-    @ManyToMany(() => Category, (category) => category.papers)
-    @JoinTable({ name: 'paper_categories' })
-    categories!: Category[];
+    @ManyToMany(() => ResearchField, (category) => category.papers)
+    @JoinTable()
+    researchFields!: ResearchField[];
 
     @Column({ name: 'published_date', nullable: true })
     publishedDate!: string; // 발행일
