@@ -1,5 +1,5 @@
 import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from "typeorm";
-import { Papers } from "./papers.entity";
+import { Papers } from "../../papers/entities/papers.entity";
 import { BaseModel } from "src/common/entities/base.entity";
 
 @Entity()

@@ -5,7 +5,7 @@ import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
 import { Papers } from '../entities/papers.entity';
 // [변경] Author, Category 엔티티 임포트 추가
 import { Author } from '../entities/author.entity';
-import { ResearchField } from '../entities/research-fields.entity';
+import { ResearchField } from '../../research-fields/entities/research-fields.entity';
 // [변경] IsNull 추가 — authorId 없는 저자 조회 시 사용
 import { DataSource, DeepPartial, In, IsNull, Repository } from 'typeorm';
 import { parseStringPromise } from 'xml2js'; // arXiv API 응답(XML)을 JavaScript 객체로 파싱하는 라이브러리
