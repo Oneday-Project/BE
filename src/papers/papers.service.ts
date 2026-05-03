@@ -1,19 +1,23 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Papers } from './entities/papers.entity';
+import { Paper } from './entities/papers.entity';
 import { Repository } from 'typeorm';
 import { GetPapersDto } from './dto/get-papers.dto';
 import { CommonService } from 'src/common/common.service';
-import { ResearchField } from '../research-fields/entities/research-fields.entity';
-import { Author } from './entities/author.entity';
+import { Author } from './entities/authors.entity';
+import { UsersService } from 'src/users/users.service';
+import { PaperBookmark } from './entities/paper-bookmarks.entity';
 
 @Injectable()
 export class PapersService {
   constructor(
-    @InjectRepository(Papers)
-    private readonly papersRepository: Repository<Papers>,
+    @InjectRepository(Paper)
+    private readonly papersRepository: Repository<Paper>,
     @InjectRepository(Author)
     private readonly authorsRepository: Repository<Author>,
+    @InjectRepository(PaperBookmark)
+    private readonly paperbookmarksRepository: Repository<PaperBookmark>,
+    private readonly usersService: UsersService,
     private readonly commonService: CommonService,
   ){}
 
@@ -106,12 +110,47 @@ export class PapersService {
   }
 
 
-
-
-
   // 모든 저자 GET
   async getAllAuthors(){
     return this.authorsRepository.find();
+  }
+
+
+  async togglePaperBookmark(arxivId: string, userId: number){
+    const paper = await this.papersRepository.findOne({
+      where: {
+        arxivId,
+      }
+    });
+
+    if(!paper){
+      throw new BadRequestException('존재하지 않는 논문입니다!');
+    }
+
+    const user = await this.usersService.findUserById(userId)
+
+    if(!user){
+      throw new UnauthorizedException('사용자 정보가 없습니다');
+    }
+
+    const bookmarkRecord = await this.paperbookmarksRepository.findOne({
+      where: { paper: { arxivId }, user: { id: userId } },
+    });
+
+    if(bookmarkRecord){ // bookmark였는데 그냥 bookmark버튼 눌러서 북마크 취소
+        await this.paperbookmarksRepository.delete({
+          paper: { arxivId },
+          user: { id: userId },
+        });
+        return { isBookmark: false };
+    }else{ // 애초에 데이터가 없었다면 새로 생성
+      await this.paperbookmarksRepository.save({
+        paper,
+        user, 
+      })
+      return { isBookmark: true };
+    }
+
   }
 
 

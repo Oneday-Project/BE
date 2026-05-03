@@ -1,5 +1,5 @@
 import { createParamDecorator, ExecutionContext, InternalServerErrorException } from "@nestjs/common";
-import { User as UserModel } from "../entities/user.entity";
+import { User as UserModel } from "../entities/users.entity";
 
 // 일반적으로 데코레이터 이름은 대문자로 시작
 export const User = createParamDecorator((data: keyof UserModel | undefined, context: ExecutionContext)=>{ // 파라미터로 콜백함수 넣기. 

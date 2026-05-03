@@ -2,11 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RawArxiv } from '../entities/raw-arxiv.entity';
 import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
-import { Papers } from '../entities/papers.entity';
-// [변경] Author, Category 엔티티 임포트 추가
-import { Author } from '../entities/author.entity';
+import { Paper } from '../entities/papers.entity';
+import { Author } from '../entities/authors.entity';
 import { ResearchField } from '../../research-fields/entities/research-fields.entity';
-// [변경] IsNull 추가 — authorId 없는 저자 조회 시 사용
 import { DataSource, DeepPartial, In, IsNull, Repository } from 'typeorm';
 import { parseStringPromise } from 'xml2js'; // arXiv API 응답(XML)을 JavaScript 객체로 파싱하는 라이브러리
 import { ConfigService } from '@nestjs/config';
@@ -80,8 +78,8 @@ export class BasicPapersService {
     private readonly arxivRepository: Repository<RawArxiv>,
     @InjectRepository(RawSemanticScholar)
     private readonly ss2Repository: Repository<RawSemanticScholar>,
-    @InjectRepository(Papers)
-    private readonly papersRepository: Repository<Papers>,
+    @InjectRepository(Paper)
+    private readonly papersRepository: Repository<Paper>,
     // [변경] 저자 / 분야 FK 처리용 레포지토리 추가
     @InjectRepository(Author)
     private readonly authorRepository: Repository<Author>,
@@ -604,7 +602,7 @@ export class BasicPapersService {
     }
 
     // ── 8. papers 저장 ────────────────────────────────────────────────────
-    const finalToInsert: Papers[] = [];
+    const finalToInsert: Paper[] = [];
 
     for (const a of toInsert) {
       const ss = ss2Map.get(a.arxivId)!; // inner join 했으므로 반드시 존재
@@ -734,13 +732,13 @@ export class BasicPapersService {
 
           // papers 갱신
           await qr.manager.save(
-            Papers,
+            Paper,
             changedData.map(({ paper, arxivId }) =>
               this.papersRepository.create({
                 arxivId,
                 citationCount:  paper.citationCount ?? undefined,
                 influenceScore: paper.influentialCitationCount ?? undefined,
-              } as DeepPartial<Papers>),
+              } as DeepPartial<Paper>),
             ),
           );
 

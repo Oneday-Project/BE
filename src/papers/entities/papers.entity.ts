@@ -1,11 +1,12 @@
 import { BaseModel } from 'src/common/entities/base.entity';
-import { Column, Entity, JoinTable, ManyToMany, OneToOne, PrimaryColumn } from 'typeorm';
-import { Author } from './author.entity';
+import { Column, Entity, JoinTable, ManyToMany, OneToMany, OneToOne, PrimaryColumn } from 'typeorm';
+import { Author } from './authors.entity';
 import { ResearchField } from '../../research-fields/entities/research-fields.entity';
 import { PaperAiSummary } from 'src/ai-services/entities/paper-ai-summaries.entity';
+import { PaperBookmark } from './paper-bookmarks.entity';
 
-@Entity('papers')
-export class Papers extends BaseModel {
+@Entity()
+export class Paper extends BaseModel {
     @PrimaryColumn()
     arxivId!: string;
 
@@ -16,7 +17,7 @@ export class Papers extends BaseModel {
     title!: string; // 제목
 
     @ManyToMany(() => Author, (author) => author.papers, { cascade: ['insert'] })
-    @JoinTable({ name: 'paper_authors' })
+    @JoinTable()
     authors!: Author[];
 
     @Column({ type: 'text', nullable: true })
@@ -43,4 +44,10 @@ export class Papers extends BaseModel {
 
     @OneToOne(()=>PaperAiSummary, (aiSummary)=>aiSummary.paper)
     aiSummary!: PaperAiSummary;
+
+    @OneToMany(
+        () => PaperBookmark,
+        (pb) => pb.paper,
+    )
+    bookmarkUsers!: PaperBookmark[];
 }
