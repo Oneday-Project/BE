@@ -1,8 +1,8 @@
 import { BaseModel } from 'src/common/entities/base.entity';
-import { Column, CreateDateColumn, Entity, PrimaryColumn, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity('hai_papers')
-export class HAIpapers extends BaseModel{
+@Entity()
+export class HAIpaper extends BaseModel{
     @PrimaryGeneratedColumn()
     id!: number;
 

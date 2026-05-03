@@ -6,7 +6,7 @@ import { RegisterUserDto } from './dto/register-user.dto';
 import * as bcrypt from 'bcrypt';
 import { envVariableKeys } from 'src/common/const/env.const';
 import { LoginUserDto } from './dto/login-user.dto';
-import { User } from 'src/users/entities/user.entity';
+import { User } from 'src/users/entities/users.entity';
 
 @Injectable()
 export class AuthService {

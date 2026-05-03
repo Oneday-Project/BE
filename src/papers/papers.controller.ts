@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { PapersService } from './papers.service';
 import { GetPapersDto } from './dto/get-papers.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from 'src/users/const/roles.const';
+import { User } from 'src/users/decorator/user.decorator';
 
 @Controller('papers')
 export class PapersController {
@@ -22,6 +23,14 @@ export class PapersController {
     @Param('arxivId') arxivId: string,
   ){
     return this.papersService.getPaperByArxivId(arxivId);
+  }
+
+  @Post('paper/bookmark/:arxivId')
+  togglePaperBookmark(
+    @Param('arxivId') arxivId: string,
+    @User('id') userId: number,
+  ){
+    return this.papersService.togglePaperBookmark(arxivId, userId);
   }
 
   @Get('authors')

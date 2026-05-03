@@ -6,25 +6,26 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { HaiPapersModule } from './papers/hai-papers/hai-papers.module';
 import { MajorCoursesModule } from './major-courses/major-courses.module';
 import { MajorCourse } from './major-courses/entities/major-course.entity';
-import { Papers } from './papers/entities/papers.entity';
+import { Paper } from './papers/entities/papers.entity';
 import { RawSemanticScholar } from './papers/entities/raw-semantic-scholar.entity';
 import { RawArxiv } from './papers/entities/raw-arxiv.entity';
-import { HAIpapers } from './papers/entities/hai-papers.entity';
+import { HAIpaper } from './papers/entities/hai-papers.entity';
 import { BasicPapersModule } from './papers/basic-papers/basic-papers.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as Joi from 'joi';
 import { envVariableKeys } from './common/const/env.const';
 import { UsersModule } from './users/users.module';
-import { User } from './users/entities/user.entity';
+import { User } from './users/entities/users.entity';
 import { AuthModule } from './auth/auth.module';
 import { AccessTokenGuard } from './auth/guard/bearer-token.guard';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RolesGuard } from './auth/guard/roles.guard';
-import { Author } from './papers/entities/author.entity';
+import { Author } from './papers/entities/authors.entity';
 import { ResearchField } from './research-fields/entities/research-fields.entity';
 import { AiServicesModule } from './ai-services/ai-services.module';
 import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity';
 import { ResearchFieldsModule } from './research-fields/research-fields.module';
+import { PaperBookmark } from './papers/entities/paper-bookmarks.entity';
 
 @Module({
   imports: [
@@ -52,15 +53,16 @@ import { ResearchFieldsModule } from './research-fields/research-fields.module';
         password: configService.get<string>(envVariableKeys.dbPassword),
         database: configService.get<string>(envVariableKeys.dbDatabase),
         entities: [
-          Papers,
+          Paper,
           RawSemanticScholar,
           RawArxiv,
-          HAIpapers,
+          HAIpaper,
           MajorCourse,
           User,
           Author,
           ResearchField,
           PaperAiSummary,
+          PaperBookmark,
         ],
         synchronize: true,
       }),
