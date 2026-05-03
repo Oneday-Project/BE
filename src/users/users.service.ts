@@ -49,7 +49,11 @@ export class UsersService {
 
   
   findAllUser() {
-    return this.userRepository.find();
+    return this.userRepository.find({
+      relations: {
+        bookmarkPapers: true,
+      }
+    });
   }
 
 
@@ -57,6 +61,9 @@ export class UsersService {
     const user = await this.userRepository.findOne({
       where: {
         id,
+      },
+      relations: {
+        bookmarkPapers: true,
       }
     });
 
