@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Unauthor
 import { RolesEnum } from "src/users/const/roles.const";
 import { Request } from "express";
 import { UsersService } from "src/users/users.service";
-import { User } from "src/users/entities/user.entity";
+import { User } from "src/users/entities/users.entity";
 
 abstract class IsResourceMineOrAdminGuard implements CanActivate {
     abstract isResourceMine(userId: number, resourceId: number): Promise<boolean>;
