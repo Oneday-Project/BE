@@ -63,7 +63,9 @@ export class UsersService {
         id,
       },
       relations: {
-        bookmarkPapers: true,
+        bookmarkPapers: {
+          paper: true,  
+        }
       }
     });
 

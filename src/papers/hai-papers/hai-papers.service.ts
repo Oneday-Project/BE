@@ -3,15 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
 import { UpdatHAIpaperDto } from './dto/update-hai-paper.dto';
-import { HAIpaper } from '../entities/hai-papers.entity';
+import { HaiPaper } from '../entities/hai-papers.entity';
 
 
 
 @Injectable()
 export class HaiPapersService {
   constructor(
-    @InjectRepository(HAIpaper)
-    private readonly haipapersRepository: Repository<HAIpaper>,
+    @InjectRepository(HaiPaper)
+    private readonly haipapersRepository: Repository<HaiPaper>,
   ) {}
 
   async createHaiPaper(dto: CreateHAIpaperDto) {

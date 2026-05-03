@@ -50,4 +50,9 @@ export class Paper extends BaseModel {
         (pb) => pb.paper,
     )
     bookmarkUsers!: PaperBookmark[];
+
+    @Column({
+        default: 0
+    })
+    bookmarkCount!: number;
 }
