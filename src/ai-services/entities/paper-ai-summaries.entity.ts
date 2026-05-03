@@ -1,5 +1,5 @@
 import { BaseModel } from "src/common/entities/base.entity";
-import { Papers } from "src/papers/entities/papers.entity";
+import { Paper } from "src/papers/entities/papers.entity";
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity()
@@ -25,7 +25,7 @@ export class PaperAiSummary extends BaseModel{
     @Column()
     model!: string; // 사용한 AI 모델 버전
 
-    @OneToOne(()=>Papers, (paper)=>paper.aiSummary)
+    @OneToOne(()=>Paper, (paper)=>paper.aiSummary)
     @JoinColumn()
-    paper!: Papers;
+    paper!: Paper;
 } 

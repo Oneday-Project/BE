@@ -1,5 +1,5 @@
 import { BaseModel } from 'src/common/entities/base.entity';
-import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { Column, Entity, PrimaryColumn } from 'typeorm';
 
 @Entity('raw_semantic_scholar')
 export class RawSemanticScholar extends BaseModel {

@@ -2,7 +2,6 @@ import { Controller, Get, Body, Patch, Param, Delete, ParseIntPipe, UseIntercept
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
-import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { RolesEnum } from './const/roles.const';
 import { IsMyInfoOrAdminGuard } from 'src/auth/guard/is-resource-mine-or-admin.guard';
 @Controller('users')
