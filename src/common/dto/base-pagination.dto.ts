@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsArray, IsInt, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsArray, IsInt, IsOptional, IsString } from "class-validator";
 
 export class BasePaginationDto {
     @IsInt()
