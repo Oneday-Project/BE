@@ -4,9 +4,8 @@ import { BasicPapersController } from './basic-papers.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RawArxiv } from '../entities/raw-arxiv.entity';
 import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
-import { Papers } from '../entities/papers.entity';
-// [변경] integrate() 에서 Author, Category FK 처리를 위해 레포지토리 추가
-import { Author } from '../entities/author.entity';
+import { Paper } from '../entities/papers.entity';
+import { Author } from '../entities/authors.entity';
 import { ResearchField } from '../../research-fields/entities/research-fields.entity';
 
 @Module({
@@ -15,9 +14,9 @@ import { ResearchField } from '../../research-fields/entities/research-fields.en
     [
       RawArxiv,
       RawSemanticScholar,
-      Papers,
-      Author,   // [변경] 저자 레포지토리 등록
-      ResearchField, // [변경] 분야 레포지토리 등록
+      Paper,
+      Author,   
+      ResearchField, 
     ]
   )],
   controllers: [BasicPapersController],

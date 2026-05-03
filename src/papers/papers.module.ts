@@ -2,19 +2,23 @@ import { Module } from '@nestjs/common';
 import { PapersService } from './papers.service';
 import { PapersController } from './papers.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Papers } from './entities/papers.entity';
+import { Paper } from './entities/papers.entity';
 import { CommonModule } from 'src/common/common.module';
-import { Author } from './entities/author.entity';
+import { Author } from './entities/authors.entity';
 import { ResearchField } from '../research-fields/entities/research-fields.entity';
+import { PaperBookmark } from './entities/paper-bookmarks.entity';
+import { UsersModule } from 'src/users/users.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Papers,
+      Paper,
       Author,
       ResearchField,
+      PaperBookmark,
     ]),
     CommonModule,
+    UsersModule,
   ],
   controllers: [PapersController],
   providers: [PapersService],
