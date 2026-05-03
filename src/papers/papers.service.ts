@@ -115,7 +115,7 @@ export class PapersService {
     return this.authorsRepository.find();
   }
 
-
+  // 북마크 기능
   async togglePaperBookmark(arxivId: string, userId: number){
     const paper = await this.papersRepository.findOne({
       where: {
@@ -137,17 +137,29 @@ export class PapersService {
       where: { paper: { arxivId }, user: { id: userId } },
     });
 
+    // 이 부분은 나중에 트랜잭션 추가!!! or 테스크 스케줄링 고려
     if(bookmarkRecord){ // bookmark였는데 그냥 bookmark버튼 눌러서 북마크 취소
         await this.paperbookmarksRepository.delete({
           paper: { arxivId },
           user: { id: userId },
         });
+
+        await this.papersRepository.decrement({
+            arxivId, 
+          }, 'bookmarkCount', 1);
+
         return { isBookmark: false };
-    }else{ // 애초에 데이터가 없었다면 새로 생성
+
+    }else{ // bookmark아니었는데 bookmark 버튼 눌러서 북마크 표시
       await this.paperbookmarksRepository.save({
         paper,
         user, 
       })
+
+      await this.papersRepository.increment({ 
+        arxivId, 
+      }, 'bookmarkCount', 1);
+
       return { isBookmark: true };
     }
 
