@@ -25,7 +25,7 @@ export class PapersController {
     return this.papersService.getPaperByArxivId(arxivId);
   }
 
-  @Post('paper/bookmark/:arxivId')
+  @Post('bookmark/:arxivId')
   togglePaperBookmark(
     @Param('arxivId') arxivId: string,
     @User('id') userId: number,
@@ -38,5 +38,7 @@ export class PapersController {
   getAllAuthors(){
     return this.papersService.getAllAuthors();
   }
+
+
 
 }
