@@ -9,7 +9,7 @@ import { MajorCourse } from './major-courses/entities/major-course.entity';
 import { Paper } from './papers/entities/papers.entity';
 import { RawSemanticScholar } from './papers/entities/raw-semantic-scholar.entity';
 import { RawArxiv } from './papers/entities/raw-arxiv.entity';
-import { HAIpaper } from './papers/entities/hai-papers.entity';
+import { HaiPaper } from './papers/entities/hai-papers.entity';
 import { BasicPapersModule } from './papers/basic-papers/basic-papers.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import * as Joi from 'joi';
@@ -56,7 +56,7 @@ import { PaperBookmark } from './papers/entities/paper-bookmarks.entity';
           Paper,
           RawSemanticScholar,
           RawArxiv,
-          HAIpaper,
+          HaiPaper,
           MajorCourse,
           User,
           Author,

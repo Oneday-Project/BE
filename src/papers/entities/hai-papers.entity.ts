@@ -2,7 +2,7 @@ import { BaseModel } from 'src/common/entities/base.entity';
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
-export class HAIpaper extends BaseModel{
+export class HaiPaper extends BaseModel{
     @PrimaryGeneratedColumn()
     id!: number;
 
