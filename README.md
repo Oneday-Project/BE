@@ -3,8 +3,10 @@
 ---
 ## 깃허브 -> 로컬
 ```
-# 1. git clone (처음에만 실행 -> 만약 기존 프로젝트 폴더에서 또 한다면 그 이후부터는 git pull origin main 이나 git fetch origin main 으로 가져오기)
+# 1. git clone (처음에만 실행)
 git clone https://github.com/Oneday-Project/BE.git .
+- 만약 기존 프로젝트 폴더에서 또 한다면 그 이후부터는 git fetch origin 실행 후 git rebase origin/main 실행
+
 
 # 2. postgres-data.zip 압축 해제(zip파일 삭제 ㄴㄴ)
 이게 가장 불편한 점.. -> 깃허브에 postgres-data폴더를 올리고 clone으로 가져오면 파일이 손상됨..
