@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Paper } from './entities/papers.entity';
-import { Repository } from 'typeorm';
+import { QueryRunner, Repository } from 'typeorm';
 import { GetPapersDto } from './dto/get-papers.dto';
 import { CommonService } from 'src/common/common.service';
 import { Author } from './entities/authors.entity';
@@ -116,8 +116,12 @@ export class PapersService {
   }
 
   // 북마크 기능
-  async togglePaperBookmark(arxivId: string, userId: number){
-    const paper = await this.papersRepository.findOne({
+  async togglePaperBookmark(arxivId: string, userId: number, qr: QueryRunner){
+    const papersRepository = qr.manager.getRepository<Paper>(Paper);
+    const paperbookmarksRepository = qr.manager.getRepository<PaperBookmark>(PaperBookmark);
+
+
+    const paper = await papersRepository.findOne({
       where: {
         arxivId,
       }
@@ -133,30 +137,30 @@ export class PapersService {
       throw new UnauthorizedException('사용자 정보가 없습니다');
     }
 
-    const bookmarkRecord = await this.paperbookmarksRepository.findOne({
+    const bookmarkRecord = await paperbookmarksRepository.findOne({
       where: { paper: { arxivId }, user: { id: userId } },
     });
 
     // 이 부분은 나중에 트랜잭션 추가!!! and 테스크 스케줄링 적용
     if(bookmarkRecord){ // bookmark였는데 그냥 bookmark버튼 눌러서 북마크 취소
-        await this.paperbookmarksRepository.delete({
+        await paperbookmarksRepository.delete({
           paper: { arxivId },
           user: { id: userId },
         });
 
-        await this.papersRepository.decrement({
+        await papersRepository.decrement({
             arxivId, 
           }, 'bookmarkCount', 1);
 
         return { isBookmark: false };
 
     }else{ // bookmark아니었는데 bookmark 버튼 눌러서 북마크 표시
-      await this.paperbookmarksRepository.save({
+      await paperbookmarksRepository.save({
         paper,
         user, 
       })
 
-      await this.papersRepository.increment({ 
+      await papersRepository.increment({ 
         arxivId, 
       }, 'bookmarkCount', 1);
 
