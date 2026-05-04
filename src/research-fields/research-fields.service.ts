@@ -11,12 +11,12 @@ export class ResearchFieldsService {
     ){}
 
     // 모든 분야 GET
-    async getAllresearchFields(){
+    async getAllResearchFields(){
         return this.researchFieldsRepository.find();
     }
 
     // 분야 생성
-    async createCategory(name: string){
+    async createResearchField(name: string){
         const category = this.researchFieldsRepository.create({name});
 
         return this.researchFieldsRepository.save(category);
