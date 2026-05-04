@@ -1,7 +1,10 @@
 import { BadRequestException, Controller, Get, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { BasicPapersService } from './basic-papers.service';
+import { ApiBearerAuth, ApiExcludeController } from '@nestjs/swagger';
 
 @Controller('papers/basic-papers')
+@ApiExcludeController()
+@ApiBearerAuth()
 export class BasicPapersController {
   constructor(private readonly basicPapersService: BasicPapersService) {}
 

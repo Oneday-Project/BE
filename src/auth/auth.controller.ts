@@ -4,12 +4,17 @@ import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { RefreshTokenGuard } from './guard/bearer-token.guard';
+import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 @Controller('auth')
+@ApiBearerAuth()
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @ApiOperation({
+    description: '회원가입 API',
+  })
   @IsPublic()
   registerUser(
     @Body() body: RegisterUserDto,
@@ -18,6 +23,9 @@ export class AuthController {
   }
 
   @Post('login')
+  @ApiOperation({
+    description: '로그인 API',
+  })
   @IsPublic()
   loginUser(
     @Body() body: LoginUserDto,
@@ -26,6 +34,9 @@ export class AuthController {
   }
 
   @Post('token/access') // access토큰 재발급
+  @ApiOperation({
+    description: 'access토큰 재발급 API',
+  })
   @IsPublic()
   @UseGuards(RefreshTokenGuard) 
   getAccessToken(@Headers('authorization') rawToken: string) { 
@@ -42,6 +53,9 @@ export class AuthController {
   }
 
   @Post('token/refresh') // refresh토큰 재발급
+  @ApiOperation({
+    description: 'refresh토큰 재발급 API',
+  })
   @IsPublic()
   @UseGuards(RefreshTokenGuard) 
   getRefreshToken(@Headers('authorization') rawToken: string) { 

@@ -141,7 +141,7 @@ export class PapersService {
       where: { paper: { arxivId }, user: { id: userId } },
     });
 
-    // 이 부분은 나중에 트랜잭션 추가!!! and 테스크 스케줄링 적용
+    // 테스크 스케줄링도 적용 예정
     if(bookmarkRecord){ // bookmark였는데 그냥 bookmark버튼 눌러서 북마크 취소
         await paperbookmarksRepository.delete({
           paper: { arxivId },
