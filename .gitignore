@@ -1,5 +1,6 @@
 # compiled output
 /postgres-data
+/postgres-data.zip
 /dist
 /node_modules
 /build
