@@ -91,7 +91,7 @@ export class PapersService {
 
   // arxivId 기반 단일 논문 GET
   async getPaperByArxivId(arxivId: string){
-    const paper = this.papersRepository.findOne({
+    const paper = await this.papersRepository.findOne({
       where: {
         arxivId,
       },
@@ -137,7 +137,7 @@ export class PapersService {
       where: { paper: { arxivId }, user: { id: userId } },
     });
 
-    // 이 부분은 나중에 트랜잭션 추가!!! or 테스크 스케줄링 고려
+    // 이 부분은 나중에 트랜잭션 추가!!! and 테스크 스케줄링 적용
     if(bookmarkRecord){ // bookmark였는데 그냥 bookmark버튼 눌러서 북마크 취소
         await this.paperbookmarksRepository.delete({
           paper: { arxivId },

@@ -24,7 +24,7 @@ export class HaiPapersService {
   }
 
   async getHaiPaper(id: number){
-    const haiPaper = this.haipapersRepository.findOne({
+    const haiPaper = await this.haipapersRepository.findOne({
       where: {
         id,
       },
@@ -38,6 +38,16 @@ export class HaiPapersService {
   }
 
   async updateHaiPaper(id: number, dto: UpdatHAIpaperDto) {
+    const haiPaper = await this.haipapersRepository.findOne({
+      where: {
+        id,
+      },
+    })
+
+    if(!haiPaper){
+      throw new NotFoundException('존재하지 않는 논문입니다!');
+    }
+
     await this.haipapersRepository.update(id, dto);
     return this.haipapersRepository.findOne({
       where: {
@@ -47,6 +57,16 @@ export class HaiPapersService {
   }
 
   async deleteHaiPaper(id: number) {
+    const haiPaper = await this.haipapersRepository.findOne({
+      where: {
+        id,
+      },
+    })
+
+    if(!haiPaper){
+      throw new NotFoundException('존재하지 않는 논문입니다!');
+    }
+    
     await this.haipapersRepository.delete(id);
   }
 }
