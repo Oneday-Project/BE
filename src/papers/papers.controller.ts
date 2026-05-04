@@ -1,9 +1,12 @@
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, UseInterceptors } from '@nestjs/common';
 import { PapersService } from './papers.service';
 import { GetPapersDto } from './dto/get-papers.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { User } from 'src/users/decorator/user.decorator';
+import { TransactionInterceptor } from 'src/common/interceptor/transaction.interceptor';
+import { QueryRunner } from 'src/common/decorator/query-runner.decorator';
+import type { QueryRunner as QR } from 'typeorm';
 
 @Controller('papers')
 export class PapersController {
@@ -26,11 +29,13 @@ export class PapersController {
   }
 
   @Post('bookmark/:arxivId')
+  @UseInterceptors(TransactionInterceptor)
   togglePaperBookmark(
     @Param('arxivId') arxivId: string,
     @User('id') userId: number,
+    @QueryRunner() qr: QR,
   ){
-    return this.papersService.togglePaperBookmark(arxivId, userId);
+    return this.papersService.togglePaperBookmark(arxivId, userId, qr);
   }
 
   @Get('authors')
