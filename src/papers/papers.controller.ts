@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Post, Query, UseInterceptors } from '@nestjs/common';
 import { PapersService } from './papers.service';
-import { GetPapersDto } from './dto/get-papers.dto';
+import { GetPapersPaginationDto } from './dto/get-papers-pagination.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { User } from 'src/users/decorator/user.decorator';
@@ -9,6 +9,7 @@ import { QueryRunner } from 'src/common/decorator/query-runner.decorator';
 import type { QueryRunner as QR } from 'typeorm';
 import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
+import { GetAuthorsPaginationDto } from './dto/get-authors-pagination.dto';
 
 @Controller('papers')
 @ApiBearerAuth()
@@ -36,7 +37,7 @@ export class PapersController {
   })
   @IsPublic()
   getAllPapers(
-    @Query() dto: GetPapersDto,
+    @Query() dto: GetPapersPaginationDto,
   ) {
     return this.papersService.getAllPapers(dto);
   }
@@ -70,8 +71,10 @@ export class PapersController {
     description: '기본 논문의 모든 저자들을 가져오는 API',
   })
   @Roles(RolesEnum.ADMIN)
-  getAllAuthors(){
-    return this.papersService.getAllAuthors();
+  getAllAuthors(
+    @Query() dto: GetAuthorsPaginationDto,
+  ){
+    return this.papersService.getAllAuthors(dto);
   }
 
 }

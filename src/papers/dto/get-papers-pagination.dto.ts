@@ -1,18 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsArray, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsArray, IsNumber, IsOptional, IsString, MinLength } from "class-validator";
 import { BasePaginationDto } from "src/common/dto/base-pagination.dto";
 
-export class GetPapersDto extends BasePaginationDto{
+export class GetPapersPaginationDto extends BasePaginationDto{
     @ApiPropertyOptional({
-        description: '키워드로 검색',
+        description: '키워드(최소 2글자 이상)로 검색',
         example: 'imagenet', 
     })
     @IsString()
     @IsOptional()
+    @MinLength(2, {
+        message: "키워드는 최소 2글자 이상 입력하세요.",
+    })
     keyword?: string;
 
-    @IsString({ each: true }) 
+    @IsString({ each: true })
     @IsOptional()
     @Transform(({ value }) => Array.isArray(value) ? value : [value])
     tags?: string[];

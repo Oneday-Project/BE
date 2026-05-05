@@ -2,11 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Paper } from './entities/papers.entity';
 import { QueryRunner, Repository } from 'typeorm';
-import { GetPapersDto } from './dto/get-papers.dto';
+import { GetPapersPaginationDto } from './dto/get-papers-pagination.dto';
 import { CommonService } from 'src/common/common.service';
 import { Author } from './entities/authors.entity';
 import { UsersService } from 'src/users/users.service';
 import { PaperBookmark } from './entities/paper-bookmarks.entity';
+import { GetAuthorsPaginationDto } from './dto/get-authors-pagination.dto';
 
 @Injectable()
 export class PapersService {
@@ -22,7 +23,7 @@ export class PapersService {
   ){}
 
   // 조건에 해당되는 모든 논문 가져오기(페이지네이션 적용)
-  async getAllPapers(dto: GetPapersDto) {
+  async getAllPapers(dto: GetPapersPaginationDto) {
 
     const { keyword, tags, yearRange, startDate, endDate } = dto;
 
@@ -113,8 +114,11 @@ export class PapersService {
 
 
   // 모든 저자 GET
-  async getAllAuthors(){
-    return this.authorsRepository.find();
+  async getAllAuthors(dto:GetAuthorsPaginationDto){
+    
+    const qb = this.authorsRepository.createQueryBuilder('author')
+
+    return this.commonService.cursorPagination(qb, dto);
   }
 
   // 북마크 기능

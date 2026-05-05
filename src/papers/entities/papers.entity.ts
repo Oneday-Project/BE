@@ -16,7 +16,7 @@ export class Paper extends BaseModel {
     @Column()
     title!: string; // 제목
 
-    @ManyToMany(() => Author, (author) => author.papers, { cascade: ['insert'] })
+    @ManyToMany(() => Author, (author) => author.papers, { cascade: true })
     @JoinTable()
     authors!: Author[];
 
@@ -28,7 +28,7 @@ export class Paper extends BaseModel {
     researchFields!: ResearchField[];
 
     @Column({ name: 'published_date', nullable: true })
-    publishedDate!: string; // 발행일
+    publishedDate!: string; // 발행일 
 
     @Column({ name: 'citation_count', type: 'int', nullable: true })
     citationCount!: number; // 이 논문이 인용된 수(인용수)
