@@ -3,7 +3,7 @@ import { Reflector } from "@nestjs/core";
 import { ROLES_KEY } from "../decorator/roles.decorator";
 
 @Injectable()
-export class RolesGuard implements CanActivate {
+export class RBACGuard implements CanActivate {
     constructor(
         private readonly reflector: Reflector,
     ){}    

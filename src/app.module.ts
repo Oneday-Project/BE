@@ -19,13 +19,14 @@ import { User } from './users/entities/users.entity';
 import { AuthModule } from './auth/auth.module';
 import { AccessTokenGuard } from './auth/guard/bearer-token.guard';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { RolesGuard } from './auth/guard/roles.guard';
+import { RBACGuard } from './auth/guard/rbac.guard';
 import { Author } from './papers/entities/authors.entity';
 import { ResearchField } from './research-fields/entities/research-fields.entity';
 import { AiServicesModule } from './ai-services/ai-services.module';
 import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity';
 import { ResearchFieldsModule } from './research-fields/research-fields.module';
 import { PaperBookmark } from './papers/entities/paper-bookmarks.entity';
+import { ResponseTimeInterceptor } from './common/interceptor/response-time.intercepter';
 
 @Module({
   imports: [
@@ -87,7 +88,11 @@ import { PaperBookmark } from './papers/entities/paper-bookmarks.entity';
     },
     {
       provide: APP_GUARD,
-      useClass: RolesGuard,
+      useClass: RBACGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ResponseTimeInterceptor,
     },
   ],
 })
