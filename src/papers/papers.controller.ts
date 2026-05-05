@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query, UseInterceptors } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post, Query, UseInterceptors } from '@nestjs/common';
 import { PapersService } from './papers.service';
 import { GetPapersPaginationDto } from './dto/get-papers-pagination.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
@@ -75,6 +75,17 @@ export class PapersController {
     @Query() dto: GetAuthorsPaginationDto,
   ){
     return this.papersService.getAllAuthors(dto);
+  }
+
+  
+  @Delete()
+  @Roles(RolesEnum.ADMIN)
+  deletePapers(
+    @Query('arxivIds') arxivIds?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.papersService.deletePapers(arxivIds, startDate, endDate);
   }
 
 }
