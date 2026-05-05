@@ -25,7 +25,13 @@ export class PaperAiSummary extends BaseModel{
     @Column()
     model!: string; // 사용한 AI 모델 버전
 
-    @OneToOne(()=>Paper, (paper)=>paper.aiSummary)
-    @JoinColumn()
+    @OneToOne(
+        ()=>Paper, 
+        (paper)=>paper.aiSummary,
+        {
+            onDelete: 'CASCADE',
+        }
+    )
+    @JoinColumn() 
     paper!: Paper;
 } 

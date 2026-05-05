@@ -36,10 +36,10 @@ export class BasicPapersController {
     return this.basicPapersService.fetchByRanking(token, query, sort, field, category);
   }
 
-  @Get('fetch-one')
-  async fetchOne(@Query('arxivId') arxivId?: string) {
-    if (!arxivId) throw new BadRequestException('arxivId 파라미터는 필수입니다. (예: 1706.03762)');
-    return this.basicPapersService.fetchOne(arxivId);
+  @Get('fetch-papers')
+  async fetchPapers(@Query('arxivIds') arxivIds?: string) {
+    if (!arxivIds) throw new BadRequestException('arxivIds 파라미터는 필수입니다. (예: 1706.03762 2301.00001)');
+    return this.basicPapersService.fetchPapers(arxivIds);
   }
 
 

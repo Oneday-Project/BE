@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Paper } from './entities/papers.entity';
-import { QueryRunner, Repository } from 'typeorm';
+import { In, QueryRunner, Repository } from 'typeorm';
 import { GetPapersPaginationDto } from './dto/get-papers-pagination.dto';
 import { CommonService } from 'src/common/common.service';
 import { Author } from './entities/authors.entity';
@@ -16,8 +16,6 @@ export class PapersService {
     private readonly papersRepository: Repository<Paper>,
     @InjectRepository(Author)
     private readonly authorsRepository: Repository<Author>,
-    @InjectRepository(PaperBookmark)
-    private readonly paperbookmarksRepository: Repository<PaperBookmark>,
     private readonly usersService: UsersService,
     private readonly commonService: CommonService,
   ){}
@@ -30,7 +28,6 @@ export class PapersService {
     const qb = this.papersRepository.createQueryBuilder('paper')
       .leftJoinAndSelect('paper.authors', 'author')
       .leftJoinAndSelect('paper.researchFields', 'researchField')
-      .leftJoinAndSelect('paper.aiSummary', 'aiSummary');
 
     // 분야로 검색하는 기능
     if (tags && tags.length > 0) {
@@ -176,5 +173,54 @@ export class PapersService {
   }
 
 
+  // 논문 삭제 (arxivId 목록 또는 날짜 범위)
+  async deletePapers(arxivIds?: string, startDate?: string, endDate?: string) {
+    if (!arxivIds && !startDate && !endDate) {
+      throw new BadRequestException('arxivIds 또는 날짜 범위(startDate/endDate)를 입력해주세요');
+    }
+
+    // ── 1. 삭제 대상 논문 조회 ──────────────────────────────────────────────
+    let papersToDelete: Paper[];
+
+    if (arxivIds) {
+      const ids = arxivIds.trim().split(/\s+/);
+      papersToDelete = await this.papersRepository.find({
+        where: { arxivId: In(ids) },
+        relations: { authors: true },
+      });
+    } else {
+      const qb = this.papersRepository.createQueryBuilder('paper')
+        .leftJoinAndSelect('paper.authors', 'author');
+      if (startDate) qb.andWhere('paper.publishedDate >= :startDate', { startDate });
+      if (endDate)   qb.andWhere('paper.publishedDate <= :endDate', { endDate });
+      papersToDelete = await qb.getMany();
+    }
+
+    if (papersToDelete.length === 0) return { deleted: 0, authorsDeleted: 0 };
+
+    // ── 2. 삭제 대상 저자 ID 수집 ────────────────────────────────────────────
+    const authorIds = [...new Set(papersToDelete.flatMap((p) => p.authors.map((a) => a.id)))];
+
+    // ── 3. 논문 삭제 (북마크/aiSummary는 onDelete: CASCADE로 자동 처리, ManyToMany 조인 테이블도 cascade: true로 자동 처리)
+    await this.papersRepository.remove(papersToDelete);
+
+    // ── 4. 고아 저자 정리 — 삭제된 논문에 속했던 저자 중 다른 논문이 없는 저자만 삭제
+    let authorsDeleted = 0;
+    if (authorIds.length > 0) {
+      const orphaned = await this.authorsRepository
+        .createQueryBuilder('author')
+        .leftJoin('author.papers', 'paper')
+        .where('author.id IN (:...ids)', { ids: authorIds })
+        .andWhere('paper.arxivId IS NULL')
+        .getMany();
+
+      if (orphaned.length > 0) {
+        await this.authorsRepository.remove(orphaned);
+        authorsDeleted = orphaned.length;
+      }
+    }
+
+    return { deleted: papersToDelete.length, authorsDeleted };
+  }
 
 }
