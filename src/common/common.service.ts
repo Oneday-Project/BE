@@ -7,9 +7,13 @@ export class CommonService {
     constructor(){}
 
     async pagePagination<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
-        const {page, take, order} = dto; // order 추가
+        let {page, take, order} = dto; // order 추가
 
-        const skip = (page! - 1) * take;
+        if(!page){
+            page = 1;
+        }
+
+        const skip = (page - 1) * take;
         qb.take(take);
         qb.skip(skip);
 
@@ -61,7 +65,7 @@ export class CommonService {
             for(let i = 0; i < columns.length; i++){
                 const andParts: string[] = [];
 
-                // 앞선 컬럼들은 = 조건으로 고정
+                // 앞선 컬럼들은 = 조건으로 고정(앞 컬럼들은 동일한 값이어야 다음 컬럼 비교가 의미 있음)
                 for(let j = 0; j < i; j++){
                     andParts.push(`${qb.alias}.${columns[j]} = :cursor_${columns[j]}`);
                     params[`cursor_${columns[j]}`] = values[columns[j]];
@@ -77,7 +81,7 @@ export class CommonService {
                 orConditions.push(`(${andParts.join(' AND ')})`);
             }
 
-            qb.where(`(${orConditions.join(' OR ')})`, params);
+            qb.andWhere(`(${orConditions.join(' OR ')})`, params);
         }
 
         this.applyOrderToQb(qb, order);
@@ -133,6 +137,6 @@ export class CommonService {
             }else{
                 qb.addOrderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');
             }
+        }
     }
-}
 }
