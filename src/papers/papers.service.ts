@@ -64,22 +64,23 @@ export class PapersService {
 
     // 최근 몇년으로 검색하는 기능
     if (yearRange) { // yearRange = 3
-      const from = new Date(); // ex. 2026.05.01
-      from.setFullYear(from.getFullYear() - yearRange); // ex. 2023
-      const fromStr = from.toISOString().split('T')[0]; // "2023.05.01T00:00:00.000Z" -> "2023-05-01"
-      qb.andWhere('paper.publishedDate >= :from', { from: fromStr });
-    }
+      const currentYear = new Date(); // ex. 2026.05.01
+      currentYear.setFullYear(currentYear.getFullYear() - yearRange); // ex. 2023
+      const startYear = currentYear.toISOString().split('T')[0]; // "2023.05.01T00:00:00.000Z" -> "2023-05-01"
+      qb.andWhere('paper.publishedDate >= :start', { start: startYear });
+    }else{
+      // 직접 기간 설정
+      if (startDate) {
+        qb.andWhere('paper.publishedDate >= :startDate', { startDate });
 
-    // 직접 기간 설정
-    if (startDate) {
-      qb.andWhere('paper.publishedDate >= :startDate', { startDate });
-    }
+        const effectiveEndDate = endDate ?? new Date().toISOString().split('T')[0];
 
-    // 직접 기간 설정
-    if (endDate) {
-      qb.andWhere('paper.publishedDate <= :endDate', { endDate });
-    }
+        qb.andWhere('paper.publishedDate <= :endDate', {endDate: effectiveEndDate});
 
+      } else if (endDate) {
+        qb.andWhere('paper.publishedDate <= :endDate', { endDate });
+      }
+    }
 
     // 커서 기반 페이지네이션
     return this.commonService.cursorPagination(qb, dto);
@@ -134,7 +135,7 @@ export class PapersService {
     const user = await this.usersService.findUserById(userId)
 
     if(!user){
-      throw new UnauthorizedException('사용자 정보가 없습니다');
+      throw new NotFoundException('사용자 정보가 없습니다');
     }
 
     const bookmarkRecord = await paperbookmarksRepository.findOne({

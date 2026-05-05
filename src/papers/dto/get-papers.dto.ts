@@ -27,7 +27,7 @@ export class GetPapersDto extends BasePaginationDto{
 
     @ApiPropertyOptional({
         description: '시작일(기간 직접 입력) 검색',
-        example: '2020.01.01', 
+        example: '2020-01-01', 
     })
     @IsString()
     @IsOptional()
@@ -35,7 +35,7 @@ export class GetPapersDto extends BasePaginationDto{
 
     @ApiPropertyOptional({
         description: '종료일(기간 직접 입력) 검색',
-        example: '2025.12.31', 
+        example: '2025-12-31', 
     })
     @IsString()
     @IsOptional()
