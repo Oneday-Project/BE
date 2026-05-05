@@ -28,7 +28,8 @@ export class PapersService {
 
     const qb = this.papersRepository.createQueryBuilder('paper')
       .leftJoinAndSelect('paper.authors', 'author')
-      .leftJoinAndSelect('paper.researchFields', 'researchField');
+      .leftJoinAndSelect('paper.researchFields', 'researchField')
+      .leftJoinAndSelect('paper.aiSummary', 'aiSummary');
 
     // 분야로 검색하는 기능
     if (tags && tags.length > 0) {
