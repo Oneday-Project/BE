@@ -5,7 +5,7 @@ import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
 import { Paper } from '../entities/papers.entity';
 import { Author } from '../entities/authors.entity';
 import { ResearchField } from '../../research-fields/entities/research-fields.entity';
-import { DataSource, DeepPartial, In, IsNull, Repository } from 'typeorm';
+import { DeepPartial, In, IsNull, Repository } from 'typeorm';
 import { parseStringPromise } from 'xml2js'; // arXiv API 응답(XML)을 JavaScript 객체로 파싱하는 라이브러리
 import { ConfigService } from '@nestjs/config';
 import { envVariableKeys } from 'src/common/const/env.const';
@@ -24,7 +24,7 @@ const ARXIV_API_BASE = 'https://export.arxiv.org/api/query'; // arXiv API 기본
 const ARXIV_MAX_RESULTS    = 2000; // arXiv API 한 번 요청에 가져올 최대 논문 수
 const ARXIV_ID_BATCH_SIZE  = 200;  // arXiv id_list 요청 시 한 배치당 처리할 ID 수
 const SS2_BATCH_SIZE       = 500;  // Semantic Scholar 배치 요청 시 한 번에 보낼 최대 ID 수
-const REQUEST_DELAY_MS     = 1100; // API 요청 사이 대기 시간(ms) — Rate Limit 초과 방지
+const REQUEST_DELAY_MS     = 3100; // API 요청 사이 대기 시간(ms) — Rate Limit 초과 방지
 
 const SS2_FIELDS = [ // Semantic Scholar API에서 가져올 필드 목록 (수집용)
   'paperId',               // SS 고유 ID
@@ -86,7 +86,6 @@ export class BasicPapersService {
     @InjectRepository(ResearchField)
     private readonly categoryRepository: Repository<ResearchField>,
     private readonly configService: ConfigService,
-    private readonly dataSource: DataSource,
   ) {}
 
   
@@ -118,6 +117,12 @@ export class BasicPapersService {
     }
 
     const response = await fetch(url); // arXiv API에 HTTP GET 요청. API 요청 시 fetch()를 사용(fetch()는 JavaScript의 내장 HTTP 요청 함수)
+
+    if (response.status === 429) {
+      await this.delay(30000); // 30초 대기
+      return this.fetchArxiv(category, start, sort, startDate, endDate);
+    }
+
     if (!response.ok) { // HTTP 상태코드가 200번대(성공)가 아니면 에러
       throw new Error(`arXiv API 오류: ${response.status} ${response.statusText}`);
     }
@@ -208,7 +213,7 @@ export class BasicPapersService {
         }),
       );
 
-    if (newPapers.length > 0) await this.arxivRepository.save(newPapers); // 새 논문이 있을 때만 DB에 저장
+    if (newPapers.length > 0) await this.arxivRepository.insert(newPapers); // 새 논문이 있을 때만 DB에 저장
 
     const saved = newPapers.length; // 실제 저장된 논문 수
     const skippedDuplicate = papers.length - saved; // 중복으로 건너뛴 논문 수
@@ -234,11 +239,11 @@ export class BasicPapersService {
     let totalSaved = 0; // 이번 실행에서 저장된 총 논문 수
     let totalNotFound = 0; // SS에서 찾지 못한 논문 수
 
+    //  Semantic Scholar API 키
+    const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string;
+
     for (let i = 0; i < toFetch.length; i += SS2_BATCH_SIZE) { // SS2_BATCH_SIZE 단위로 배치 처리
       const batch = toFetch.slice(i, i + SS2_BATCH_SIZE); // 현재 배치의 arXiv ID 목록(SS2_BATCH_SIZE 개수 만큼 가져옴)
-
-      //  Semantic Scholar API 키
-      const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string
 
       // SS 배치 API 호출 방식(그냥 규칙(문법)임. 공식 batch endpoint 사용 방식)
       const response = await fetch(`${SS2_BATCH_URL}?fields=${SS2_FIELDS}`, { 
@@ -395,7 +400,7 @@ export class BasicPapersService {
 
     let ssSaved = 0;
     if (newSsPapers.length > 0) { // 저장할 새 논문이 있을 때만
-      await this.ss2Repository.save(newSsPapers.map((p) => this.mapToPaper(p, p.externalIds.ArXiv as string))); // SS 데이터 DB 저장
+      await this.ss2Repository.insert(newSsPapers.map((p) => this.mapToPaper(p, p.externalIds.ArXiv as string))); // SS 데이터 DB 저장
       ssSaved = newSsPapers.length; // 저장된 수 기록
     }
 
@@ -414,9 +419,12 @@ export class BasicPapersService {
   async fetchOne(arxiv: string) {
     const cleanId = arxiv.trim().replace(/v\d+$/, ''); // 입력값 앞뒤 공백 제거 및 버전 번호(v1, v2 등) 제거
 
-    // ── 0. DB 사전 확인 — 이미 존재하면 즉시 반환 ───────────────────────
-    const existingArxivCheck = await this.arxivRepository.findOne({ where: { arxivId: cleanId } }); // raw_arxiv에 이미 있는지 확인
-    const existingSsCheck = await this.ss2Repository.findOne({ where: { arxivId: cleanId } }); // raw_semantic_scholar에 이미 있는지 확인
+    // ── 0. DB 사전 확인 — 두 테이블 병렬 조회 ─────────────────────────────
+    const [existingArxivCheck, existingSsCheck] = await Promise.all([
+      this.arxivRepository.findOne({ where: { arxivId: cleanId } }), // raw_arxiv에 이미 있는지 확인
+      this.ss2Repository.findOne({ where: { arxivId: cleanId } }),    // raw_semantic_scholar에 이미 있는지 확인
+    ]);
+
     if (existingArxivCheck && existingSsCheck) { // 둘 다 있으면 API 호출 없이 DB 데이터 반환
       return {
         arxivId: cleanId,
@@ -429,32 +437,49 @@ export class BasicPapersService {
       };
     }
 
-    // arXiv API 호출
-    const arxivUrl = `${ARXIV_API_BASE}?id_list=${cleanId}&max_results=1`; // 특정 ID 단건 조회 URL
+    // ── 1. arXiv 데이터 확보 — DB에 있으면 API 호출 생략 ──────────────────
+    let arxivId:    string;
+    let title:      string;
+    let authors:    string[];
+    let abstract:   string;
+    let categories: string[];
+    let pdfUrl:     string | null;
 
-    const arxivResponse = await fetch(arxivUrl); // arXiv API 요청
-    if (!arxivResponse.ok) { // 요청 실패 시 에러
-      throw new Error(`arXiv API 오류: ${arxivResponse.status} ${arxivResponse.statusText}`);
+    if (existingArxivCheck) {
+      // DB에서 이미 가져온 데이터 재사용 (arXiv API 호출 생략)
+      arxivId    = existingArxivCheck.arxivId;
+      title      = existingArxivCheck.title;
+      authors    = existingArxivCheck.authors ?? [];
+      abstract   = existingArxivCheck.abstract;
+      categories = existingArxivCheck.category ?? [];
+      pdfUrl     = existingArxivCheck.pdfUrl;
+    } else {
+      // arXiv API 호출
+      const arxivUrl = `${ARXIV_API_BASE}?id_list=${cleanId}&max_results=1`; // 특정 ID 단건 조회 URL
+      const arxivResponse = await fetch(arxivUrl); // arXiv API 요청
+      if (!arxivResponse.ok) { // 요청 실패 시 에러
+        throw new Error(`arXiv API 오류: ${arxivResponse.status} ${arxivResponse.statusText}`);
+      }
+
+      const xmlText = await arxivResponse.text(); // XML 응답 텍스트 읽기
+      const parsed = await parseStringPromise(xmlText, { explicitArray: true }); // XML → JS 객체 변환
+      const entries: any[] = parsed?.feed?.entry ?? []; // 논문 항목 추출
+
+      if (entries.length === 0) { // 결과가 없으면 논문을 찾지 못한 것
+        throw new NotFoundException(`논문을 찾을 수 없습니다: "${arxiv}"`);
+      }
+
+      const entry    = entries[0]; // 단건 조회이므로 첫 번째 항목만 사용
+      const idUrl: string = entry.id?.[0] ?? ''; // arXiv URL 형태의 ID
+      arxivId    = idUrl.split('/').pop()?.replace(/v\d+$/, '') ?? ''; // URL에서 버전 없는 순수 ID 추출
+      title      = (entry.title?.[0] ?? '').replace(/\s+/g, ' ').trim(); // 제목 정리
+      authors    = (entry.author ?? []).map((a: any) => a.name?.[0] as string).filter(Boolean); // 저자 목록
+      abstract   = (entry.summary?.[0] ?? '').replace(/\s+/g, ' ').trim(); // 초록 정리
+      categories = (entry.category ?? []).map((c: any) => c.$.term as string); // 카테고리 목록
+      const links: any[] = entry.link ?? []; // 링크 목록
+      const pdfLink = links.find((l) => l.$?.type === 'application/pdf'); // PDF 링크 찾기
+      pdfUrl     = pdfLink?.$?.href ?? null; // PDF URL 추출 (없으면 null)
     }
-
-    const xmlText = await arxivResponse.text(); // XML 응답 텍스트 읽기
-    const parsed = await parseStringPromise(xmlText, { explicitArray: true }); // XML → JS 객체 변환
-    const entries: any[] = parsed?.feed?.entry ?? []; // 논문 항목 추출
-
-    if (entries.length === 0) { // 결과가 없으면 논문을 찾지 못한 것
-      throw new NotFoundException(`논문을 찾을 수 없습니다: "${arxiv}"`);
-    }
-
-    const entry = entries[0]; // 단건 조회이므로 첫 번째 항목만 사용
-    const idUrl: string = entry.id?.[0] ?? ''; // arXiv URL 형태의 ID
-    const arxivId  = idUrl.split('/').pop()?.replace(/v\d+$/, '') ?? ''; // URL에서 버전 없는 순수 ID 추출
-    const title    = (entry.title?.[0] ?? '').replace(/\s+/g, ' ').trim(); // 제목 정리
-    const authors  = (entry.author ?? []).map((a: any) => a.name?.[0] as string).filter(Boolean); // 저자 목록
-    const abstract = (entry.summary?.[0] ?? '').replace(/\s+/g, ' ').trim(); // 초록 정리
-    const categories: string[] = (entry.category ?? []).map((c: any) => c.$.term as string); // 카테고리 목록
-    const links: any[] = entry.link ?? []; // 링크 목록
-    const pdfLink = links.find((l) => l.$?.type === 'application/pdf'); // PDF 링크 찾기
-    const pdfUrl: string | null = pdfLink?.$?.href ?? null; // PDF URL 추출 (없으면 null)
 
     // SS API 단건 조회 (저장 전 먼저 확인)
     const ssUrl = `${SS2_PAPER_URL}/ArXiv:${arxivId}?fields=${SS2_FIELDS}`; // arXiv ID로 SS 단건 조회 URL 구성
@@ -481,7 +506,7 @@ export class BasicPapersService {
     if (existingArxivCheck) { // 이미 raw_arxiv에 있으면
       arxivStatus = 'already_exists'; // 상태만 표시하고 저장하지 않음
     } else { // 없으면 새로 저장
-      await this.arxivRepository.save(
+      await this.arxivRepository.insert(
         this.arxivRepository.create({ arxivId, title, authors, abstract, category: categories, pdfUrl: pdfUrl ?? '' }), // pdfUrl이 null이면 빈 문자열 저장
       );
       arxivStatus = 'saved';
@@ -494,7 +519,7 @@ export class BasicPapersService {
     if (existingSs) { // 이미 SS 데이터가 있으면
       ssStatus = 'already_exists';
     } else { // 없으면 새로 저장
-      await this.ss2Repository.save(this.mapToPaper(ssData, arxivId)); // SS 응답을 엔티티로 변환 후 저장
+      await this.ss2Repository.insert(this.mapToPaper(ssData, arxivId)); // SS 응답을 엔티티로 변환 후 저장
       ssStatus = 'saved';
     }
 
@@ -508,11 +533,15 @@ export class BasicPapersService {
   async integrate() {
     const QUERY_CHUNK = 1000; // PostgreSQL 파라미터 한도 초과 방지용 청크 크기
 
-    // ── 1. raw_arxiv 전체 조회 ────────────────────────────────────────────
-    const arxivList = await this.arxivRepository.find(); // raw_arxiv 테이블 전체 데이터 조회
-
-    // ── 2. raw_semantic_scholar 전체 조회 → arxivId 기준 Map 생성 ─────────
-    const ss2List = await this.ss2Repository.find(); // raw_semantic_scholar 테이블 전체 데이터 조회
+    // ── 1. raw_arxiv / raw_semantic_scholar 전체 조회 — 병렬 실행 ─────────
+    const [arxivList, ss2List] = await Promise.all([
+      this.arxivRepository.find({
+        select: ['arxivId', 'title', 'authors', 'abstract', 'category', 'pdfUrl'], // 필요한 컬럼만 로드 (createdAt/updatedAt 제외)
+      }),
+      this.ss2Repository.find({
+        select: ['ss2Id', 'arxivId', 'doi', 'publishedDate', 'citationCount', 'influenceScore', 'journal'], // 필요한 컬럼만 로드
+      }),
+    ]);
     const ss2Map = new Map(ss2List.map((s) => [s.arxivId, s])); // arxivId를 키로 Map 생성 (arXiv 데이터와 빠르게 매핑하기 위함)
 
     // ── 3. INNER JOIN — 양쪽 모두 있는 논문만 추출 ───────────────────────
@@ -646,8 +675,13 @@ export class BasicPapersService {
     }
 
     const saved = finalToInsert.length;
-    // [변경] 분야 미매핑으로 제외된 논문 수 반환
     const categorySkipped = toInsert.length - saved;
+
+    // ── 9. raw 테이블 전체 정리 — integrate 완료 후 두 테이블 모두 비움 ───────
+    await Promise.all([
+      this.arxivRepository.clear(),
+      this.ss2Repository.clear(),
+    ]);
 
     return { total: joined.length, saved, alreadyExists, categorySkipped };
   }
@@ -670,15 +704,14 @@ export class BasicPapersService {
     // }
     const allArxivIds = allPapers.map((p) => p.arxivId); // 갱신 대상 arXiv ID 전체 목록
 
-    let totalUpdated = 0; // 실제 값이 변경된 논문 수
     let totalNotFound = 0; // SS에서 찾지 못한 논문 수
+    const allChangedData: { paper: any; arxivId: string }[] = []; // 전체 배치에서 변경된 데이터 누적
 
-    // ── 2. SS API 배치 호출 → 기존값과 비교 후 변경된 것만 갱신 ──────────
+    const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string;
+
+    // ── 2. SS API 배치 호출 → 변경된 데이터 수집 (트랜잭션 없이 누적) ──────
     for (let i = 0; i < allArxivIds.length; i += SS2_BATCH_SIZE) { // SS2_BATCH_SIZE 단위로 배치 처리
       const batch = allArxivIds.slice(i, i + SS2_BATCH_SIZE); // 현재 배치의 arXiv ID 목록
-
-      //  Semantic Scholar API 키
-      const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string
 
       const response = await fetch(`${SS2_BATCH_URL}?fields=${SS2_UPDATE_FIELDS}`, { // SS 배치 API 호출 (갱신용 필드만 요청)
         method: 'POST',
@@ -692,10 +725,9 @@ export class BasicPapersService {
       }
 
       const data: (any | null)[] = await response.json(); // 응답 파싱 (찾지 못한 논문은 null)
-      const notFoundCount = data.filter((p) => p === null).length; // null 개수 = SS에서 찾지 못한 논문 수
-      totalNotFound += notFoundCount; // 누적
+      totalNotFound += data.filter((p) => p === null).length; // null 개수 누적
 
-      // 기존값과 비교해서 실제 변경된 것만 추출
+      // 기존값과 비교해서 실제 변경된 것만 추출 후 누적
       const changedData = data
         .map((paper, idx) => ({ paper, arxivId: batch[idx] })) // 응답 데이터와 arXiv ID를 쌍으로 묶음
         .filter((item): item is { paper: any; arxivId: string } => { // null 제거 + 타입 가드
@@ -710,52 +742,24 @@ export class BasicPapersService {
           );
         });
 
-      if (changedData.length > 0) { // 실제 변경된 데이터가 있을 때만 저장
-        // ── 트랜잭션 시작: raw_semantic_scholar와 papers를 하나의 단위로 처리 ──
-        const qr = this.dataSource.createQueryRunner(); // 트랜잭션 관리용 QueryRunner 생성
-        await qr.connect(); // DB 커넥션 확보
-        await qr.startTransaction(); // 트랜잭션 시작
-
-        try {
-          // raw_semantic_scholar 갱신
-          await qr.manager.save( // 트랜잭션 내에서 저장 (queryRunner.manager 사용)
-            RawSemanticScholar,
-            changedData.map(({ paper, arxivId }) =>
-              this.ss2Repository.create({ // 변경된 필드만 담은 부분 엔티티 생성
-                ss2Id:          paper.paperId,
-                arxivId,
-                citationCount:  paper.citationCount ?? undefined,  // null이면 undefined로 변환 (TypeORM은 undefined는 업데이트 제외)
-                influenceScore: paper.influentialCitationCount ?? undefined,
-              } as DeepPartial<RawSemanticScholar>), // 일부 필드만 있는 객체임을 TypeORM에 알림
-            ),
-          );
-
-          // papers 갱신
-          await qr.manager.save(
-            Paper,
-            changedData.map(({ paper, arxivId }) =>
-              this.papersRepository.create({
-                arxivId,
-                citationCount:  paper.citationCount ?? undefined,
-                influenceScore: paper.influentialCitationCount ?? undefined,
-              } as DeepPartial<Paper>),
-            ),
-          );
-
-          // 두 테이블 모두 성공 시 커밋
-          await qr.commitTransaction(); // 변경사항을 DB에 확정
-          totalUpdated += changedData.length; // 성공한 경우에만 카운터 증가
-        } catch (err) {
-          // 하나라도 실패하면 양쪽 모두 롤백
-          await qr.rollbackTransaction(); // 트랜잭션 내 모든 변경사항 취소
-        } finally {
-          // 성공/실패 무관하게 커넥션 반환
-          await qr.release(); // QueryRunner가 점유한 커넥션을 풀에 반납
-        }
-        // ── 트랜잭션 종료 ─────────────────────────────────────────────────────
-      }
+      allChangedData.push(...changedData); // 모든 배치의 변경 데이터 누적
 
       if (i + SS2_BATCH_SIZE < allArxivIds.length) await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이
+    }
+
+    // ── 3. papers만 직접 갱신 (raw 테이블은 integrate() 후 비워지므로 불필요) ──
+    let totalUpdated = 0;
+    if (allChangedData.length > 0) {
+      await this.papersRepository.save(
+        allChangedData.map(({ paper, arxivId }) =>
+          this.papersRepository.create({
+            arxivId,
+            citationCount:  paper.citationCount ?? undefined,  // null이면 undefined로 변환 (TypeORM은 undefined는 업데이트 제외)
+            influenceScore: paper.influentialCitationCount ?? undefined,
+          } as DeepPartial<Paper>),
+        ),
+      );
+      totalUpdated = allChangedData.length;
     }
 
     return { total: allArxivIds.length, updated: totalUpdated, notFound: totalNotFound }; // 갱신 결과 반환
@@ -826,7 +830,7 @@ export class BasicPapersService {
         }),
       );
 
-    if (newRecords.length > 0) await this.arxivRepository.save(newRecords); // 새 레코드가 있을 때만 저장
+    if (newRecords.length > 0) await this.arxivRepository.insert(newRecords); // 새 레코드가 있을 때만 저장
     return { saved: newRecords.length, alreadyExists }; // 저장 결과 반환
   }
 
@@ -899,4 +903,5 @@ export class BasicPapersService {
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms)); // ms 밀리초 후 resolve되는 Promise 반환 (await와 함께 사용해 실행을 일시 중단)
   }
+
 }
