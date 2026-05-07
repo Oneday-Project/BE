@@ -676,7 +676,7 @@ export class BasicPapersService {
           title:          a.title,
           authors:        authorEntities,   // [변경] string[] → Author[] (authorId 포함)
           abstract:       a.abstract,
-          researchFields:     categoryEntities, // [변경] string[] → Category[]
+          researchFields: categoryEntities, // [변경] string[] → Category[]
           pdfUrl:         a.pdfUrl,
           doi:            ss.doi,
           publishedDate:  ss.publishedDate,
@@ -755,8 +755,8 @@ export class BasicPapersService {
           const newCitation  = item.paper.citationCount ?? null; // SS에서 새로 받은 인용 수
           const newInfluence = item.paper.influentialCitationCount ?? null; // SS에서 새로 받은 영향력 점수
           return (
-            newCitation  !== existing.citationCount || // 인용 수가 변경됐거나
-            newInfluence !== existing.influenceScore   // 영향력 점수가 변경된 경우만 포함
+            newCitation  !== existing.citationCount  || // 인용 수가 변경됐거나
+            newInfluence !== existing.influenceScore     // 영향력 점수가 변경된 경우만 포함
           );
         });
 
@@ -908,13 +908,13 @@ export class BasicPapersService {
       (data.year != null ? String(data.year) : null);        // 없으면 year 필드를 문자열로 변환해 사용
 
     return this.ss2Repository.create({ // RawSemanticScholar 엔티티 인스턴스 생성
-      ss2Id:         data.paperId as string,                               // SS 고유 ID
-      doi:           (data.externalIds?.DOI as string | undefined) ?? undefined, // DOI (없으면 undefined)
-      publishedDate: publishedDate ?? undefined,                           // 출판일 (없으면 undefined)
-      citationCount: (data.citationCount as number | undefined) ?? undefined,    // 인용 수
+      ss2Id:          data.paperId as string,                                        // SS 고유 ID
+      doi:            (data.externalIds?.DOI as string | undefined) ?? undefined,    // DOI (없으면 undefined)
+      publishedDate:  publishedDate ?? undefined,                                    // 출판일 (없으면 undefined)
+      citationCount:  (data.citationCount as number | undefined) ?? undefined,       // 인용 수
       influenceScore: (data.influentialCitationCount as number | undefined) ?? undefined, // 영향력 점수
-      arxivId,                                                             // arXiv ID
-      journal:       journal ?? undefined,                                 // 저널명
+      arxivId,                                                                       // arXiv ID
+      journal:        journal ?? undefined,                                          // 저널명
     } as DeepPartial<RawSemanticScholar>); // 일부 필드만 있는 객체임을 명시
   }
 
