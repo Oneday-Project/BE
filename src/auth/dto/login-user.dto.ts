@@ -4,7 +4,7 @@ import { IsEmail, IsNotEmpty, IsString } from "class-validator";
 export class LoginUserDto {
     @ApiProperty({
         description: '이메일',
-        example: 'admin@naver.com', 
+        example: 'user1@naver.com', 
     })
     @IsNotEmpty()
     @IsString()
