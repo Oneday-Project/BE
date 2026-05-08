@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PaperAiSummary } from './entities/paper-ai-summaries.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -35,7 +35,7 @@ export class AiServicesService {
     }
 
     async getPaperAiSummaryByArxivId(arxivId: string){
-    const paperAiSummary = await this.paperAiSummaryRepository.findOne({
+    const paperAiSummary = await this.paperAiSummaryRepository.exists({
         where: {
             paper: { arxivId },
         },
@@ -54,19 +54,21 @@ export class AiServicesService {
 
     // ai모델 사용 전에 테스트를 위해 직접 데이터를 생성하는 코드
     async createPaperAiSummary(arxivId: string, dto: CreatePaperAiSummaryDTO){
-        const existingPaperAiSummary = await this.paperAiSummaryRepository.findOne({
+        const existingPaperAiSummary = await this.paperAiSummaryRepository.exists({
             where: {
-                paper: { arxivId },
+                paper: { 
+                    arxivId 
+                },
             },
         });
 
         if(existingPaperAiSummary){
-            throw new NotFoundException('해당 논문의 AI 요약이 이미 존재합니다!');
+            throw new ConflictException('해당 논문의 AI 요약이 이미 존재합니다!');
         }
 
         const paper = await this.papersService.getPaperByArxivId(arxivId);
         if (!paper){
-            throw new NotFoundException('존재하지 않는 논문입니다!');
+            throw new BadRequestException('존재하지 않는 논문입니다!');
         }
 
         const paperAiSummary = this.paperAiSummaryRepository.create({

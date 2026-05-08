@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
@@ -15,8 +15,19 @@ export class HaiPapersService {
   ) {}
 
   async createHaiPaper(dto: CreateHAIpaperDto) {
-    const paper = this.haipapersRepository.create(dto);
-    return this.haipapersRepository.save(paper);
+    const haiPaperExists = await this.haipapersRepository.exists({
+      where: {
+        doi: dto.doi,
+        title: dto.title,
+      }
+    });
+
+    if(haiPaperExists){
+      throw new ConflictException('이미 존재하는 휴먼과 논문입니다!');
+    }
+
+    const haiPaper = this.haipapersRepository.create(dto);
+    return this.haipapersRepository.save(haiPaper);
   }
 
   async getAllHaiPapers() {
@@ -31,21 +42,21 @@ export class HaiPapersService {
     })
 
     if(!haiPaper){
-      throw new NotFoundException('존재하지 않는 논문입니다!');
+      throw new NotFoundException('존재하지 않는 휴먼과 논문입니다!');
     }
 
     return haiPaper;
   }
 
   async updateHaiPaper(id: number, dto: UpdatHAIpaperDto) {
-    const haiPaper = await this.haipapersRepository.findOne({
+    const haiPaper = await this.haipapersRepository.exists({
       where: {
         id,
       },
     })
 
     if(!haiPaper){
-      throw new NotFoundException('존재하지 않는 논문입니다!');
+      throw new NotFoundException('존재하지 않는 휴먼과 논문입니다!');
     }
 
     await this.haipapersRepository.update(id, dto);
@@ -57,14 +68,14 @@ export class HaiPapersService {
   }
 
   async deleteHaiPaper(id: number) {
-    const haiPaper = await this.haipapersRepository.findOne({
+    const haiPaper = await this.haipapersRepository.exists({
       where: {
         id,
       },
     })
 
     if(!haiPaper){
-      throw new NotFoundException('존재하지 않는 논문입니다!');
+      throw new NotFoundException('존재하지 않는 휴먼과 논문입니다!');
     }
     
     await this.haipapersRepository.delete(id);
