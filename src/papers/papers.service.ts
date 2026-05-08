@@ -131,7 +131,7 @@ export class PapersService {
     });
 
     if(!paper){
-      throw new BadRequestException('존재하지 않는 논문입니다!');
+      throw new NotFoundException('존재하지 않는 논문입니다!');
     }
 
     const user = await this.usersService.findUserById(userId)

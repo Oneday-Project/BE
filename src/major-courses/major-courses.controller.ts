@@ -3,6 +3,8 @@ import { MajorCoursesService } from './major-courses.service';
 import { CreateMajorCourseDto } from './dto/create-major-course.dto';
 import { UpdateMajorCourseDto } from './dto/update-major-course.dto';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { RolesEnum } from 'src/users/const/roles.const';
+import { Roles } from 'src/auth/decorator/roles.decorator';
 
 @Controller('major-courses')
 @ApiBearerAuth()
@@ -20,6 +22,7 @@ export class MajorCoursesController {
   }
 
   @Post()
+  @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: '휴먼과 전공과목을 생성하는 API', 
   })
@@ -28,6 +31,7 @@ export class MajorCoursesController {
   }
 
   @Patch(':courseId')
+  @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 수정하는 API', 
   })
@@ -39,10 +43,11 @@ export class MajorCoursesController {
   }
 
   @Delete(':courseId')
+  @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 삭제하는 API', 
   })
-  deleteCourse(@Param('courseId') id: string) {
-    return this.majorCoursesService.deleteCourse(id);
+  deleteCourse(@Param('courseId') courseId: string) {
+    return this.majorCoursesService.deleteCourse(courseId);
   }
 }

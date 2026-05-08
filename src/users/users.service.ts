@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/users.entity';
@@ -21,7 +21,7 @@ export class UsersService {
     });
 
     if(nickNameExists){
-      throw new BadRequestException('이미 존재하는 nickname 입니다!')
+      throw new ConflictException('이미 존재하는 nickname 입니다!')
     }
 
     // 2) email 중복이 없는지 확인
@@ -32,7 +32,7 @@ export class UsersService {
     });
 
     if(emailExists){
-      throw new BadRequestException('이미 가입한 이메일입니다!')
+      throw new ConflictException('이미 가입한 이메일입니다!')
     }
 
     const userObject = this.userRepository.create({
@@ -87,7 +87,7 @@ export class UsersService {
 
 
   async updateUser(id: number, updateUserDto: UpdateUserDto) {
-    const user = await this.userRepository.findOne({
+    const user = await this.userRepository.exists({
       where: {
         id,
       }
@@ -111,7 +111,7 @@ export class UsersService {
 
 
   async removeUser(id: number) {
-    const user = await this.userRepository.findOne({
+    const user = await this.userRepository.exists({
       where: {
         id,
       }

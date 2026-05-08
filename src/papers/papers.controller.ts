@@ -79,6 +79,9 @@ export class PapersController {
 
   
   @Delete()
+  @ApiOperation({
+    description: '기본 논문 삭제 API',
+  })
   @Roles(RolesEnum.ADMIN)
   deletePapers(
     @Query('arxivIds') arxivIds?: string,

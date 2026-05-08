@@ -30,6 +30,7 @@ export class UsersController {
   }
 
   @Patch(':userId')
+  @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: 'userId 기반 단일 사용자 정보를 수정하는 API', 
   })
@@ -42,6 +43,7 @@ export class UsersController {
   }
 
   @Delete(':userId')
+  @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: 'userId 기반 단일 사용자 정보를 삭제하는 API', 
   })
