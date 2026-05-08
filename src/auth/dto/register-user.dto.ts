@@ -4,7 +4,7 @@ import { IsEmail, IsNotEmpty, IsString } from "class-validator";
 export class RegisterUserDto {
     @ApiProperty({
         description: '사용자 이름',
-        example: 'admin1', 
+        example: 'user1', 
     })
     @IsNotEmpty()
     @IsString()
@@ -12,7 +12,7 @@ export class RegisterUserDto {
 
     @ApiProperty({
         description: '닉네임',
-        example: 'a1', 
+        example: 'u1', 
     })
     @IsNotEmpty()
     @IsString()
@@ -20,7 +20,7 @@ export class RegisterUserDto {
 
     @ApiProperty({
         description: '이메일',
-        example: 'admin@naver.com', 
+        example: 'user1@naver.com', 
     })
     @IsNotEmpty()
     @IsString()
@@ -29,7 +29,7 @@ export class RegisterUserDto {
 
     @ApiProperty({
         description: '비밀번호',
-        example: 'admin@naver.com', 
+        example: '123123', 
     })
     @IsNotEmpty()
     @IsString()
