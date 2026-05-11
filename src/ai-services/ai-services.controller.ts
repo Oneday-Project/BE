@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common
 import { AiServicesService } from './ai-services.service';
 import { CreatePaperAiSummaryDTO } from './dto/create-paper-ai-summary.dto';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { CreateHaiPaperAiSummaryDTO } from './dto/create-hai-paper-ai-summary.dto';
 
 @Controller('ai-services')
 @ApiBearerAuth()
@@ -56,6 +57,17 @@ export class AiServicesController {
     @Param('id', ParseIntPipe) id: number,
   ){
     return this.aiServicesService.getHaiPaperAiSummaryById(id);
+  }
+
+  @Post('hai-papers/:id')
+  @ApiOperation({
+    description: 'id 기반 휴먼과 단일 논문 AI 요약을 생성하는 API', 
+  })
+  createHaiPaperAiSummary(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateHaiPaperAiSummaryDTO, 
+  ){
+    return this.aiServicesService.createHaiPaperAiSummary(id, dto);
   }
 
 
