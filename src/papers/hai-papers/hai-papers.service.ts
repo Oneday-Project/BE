@@ -34,7 +34,7 @@ export class HaiPapersService {
     return this.haipapersRepository.find();
   }
 
-  async getHaiPaper(id: number){
+  async getHaiPaperById(id: number){
     const haiPaper = await this.haipapersRepository.findOne({
       where: {
         id,

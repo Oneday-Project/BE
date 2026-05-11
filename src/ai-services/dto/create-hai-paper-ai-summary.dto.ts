@@ -1,6 +1,6 @@
 import { IsString } from "class-validator";
 
-export class CreatePaperAiSummaryDTO {
+export class CreateHaiPaperAiSummaryDTO {
     @IsString()
     whyRead!: string; // 내가 왜 읽어야 하는가. 중요도에 따라 답변 뉘앙스 달라짐
 

@@ -1,5 +1,6 @@
+import { HaiPaperAiSummary } from 'src/ai-services/entities/hai-paper-ai-summaries.entity';
 import { BaseModel } from 'src/common/entities/base.entity';
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
 export class HaiPaper extends BaseModel{
@@ -29,4 +30,7 @@ export class HaiPaper extends BaseModel{
 
     @Column({ name: 'pdf_url', type: 'text', nullable: true })
     pdfUrl!: string; // pdf링크
+
+    @OneToOne(()=>HaiPaperAiSummary, (aiSummary)=>aiSummary.haiPaper)
+    aiSummary!: HaiPaperAiSummary;
 }

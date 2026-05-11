@@ -14,5 +14,6 @@ import { HaiPaper } from '../entities/hai-papers.entity';
   )],
   controllers: [HaiPapersController],
   providers: [HaiPapersService],
+  exports: [HaiPapersService],
 })
 export class HaiPapersModule {}
