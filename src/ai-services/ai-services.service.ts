@@ -124,7 +124,7 @@ export class AiServicesService {
     }
 
     async createHaiPaperAiSummary(id: number, dto: CreateHaiPaperAiSummaryDTO){
-        const existingPaperAiSummary = await this.haiPaperAiSummaryRepository.exists({
+        const existingHaiPaperAiSummary = await this.haiPaperAiSummaryRepository.exists({
             where: {
                 haiPaper: { 
                     id, 
@@ -132,7 +132,7 @@ export class AiServicesService {
             },
         });
 
-        if(existingPaperAiSummary){
+        if(existingHaiPaperAiSummary){
             throw new ConflictException('해당 논문의 AI 요약이 이미 존재합니다!');
         }
 
@@ -141,12 +141,12 @@ export class AiServicesService {
             throw new BadRequestException('존재하지 않는 논문입니다!');
         }
 
-        const paperAiSummary = this.haiPaperAiSummaryRepository.create({
+        const haiPaperAiSummary = this.haiPaperAiSummaryRepository.create({
             ...dto, 
             haiPaper,
         })
 
-        return this.paperAiSummaryRepository.save(paperAiSummary);
+        return this.haiPaperAiSummaryRepository.save(haiPaperAiSummary);
     }
 
 }
