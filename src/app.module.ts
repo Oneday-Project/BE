@@ -27,6 +27,7 @@ import { PaperAiSummary } from './ai-services/entities/paper-ai-summaries.entity
 import { ResearchFieldsModule } from './research-fields/research-fields.module';
 import { PaperBookmark } from './papers/entities/paper-bookmarks.entity';
 import { ResponseTimeInterceptor } from './common/interceptor/response-time.intercepter';
+import { HaiPaperAiSummary } from './ai-services/entities/hai-paper-ai-summaries.entity';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { ResponseTimeInterceptor } from './common/interceptor/response-time.inte
           ResearchField,
           PaperAiSummary,
           PaperBookmark,
+          HaiPaperAiSummary,
         ],
         synchronize: true,
       }),

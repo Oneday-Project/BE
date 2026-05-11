@@ -24,7 +24,7 @@ export class HaiPapersController {
     description: 'id 기반 단일 휴먼과 논문 가져오는 API', 
   })
   getPaper(@Param('id', ParseIntPipe) id: number) {
-    return this.haiPapersService.getHaiPaper(id);
+    return this.haiPapersService.getHaiPaperById(id);
   }
 
   @Post()

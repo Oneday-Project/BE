@@ -1,14 +1,12 @@
 import { BaseModel } from "src/common/entities/base.entity";
+import { HaiPaper } from "src/papers/entities/hai-papers.entity";
 import { Paper } from "src/papers/entities/papers.entity";
 import { Column, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity()
-export class PaperAiSummary extends BaseModel{
+export class HaiPaperAiSummary extends BaseModel{
     @PrimaryGeneratedColumn()
     id!: number;
-
-    @Column()
-    whyRead!: string; // 내가 왜 읽어야 하는가. 중요도에 따라 답변 뉘앙스 달라짐
 
     @Column()
     abstractKor!: string; // 초록 한국어 번역
@@ -26,12 +24,12 @@ export class PaperAiSummary extends BaseModel{
     model!: string; // 사용한 AI 모델 버전
 
     @OneToOne(
-        ()=>Paper, 
-        (paper)=>paper.aiSummary,
+        ()=>HaiPaper, 
+        (haiPaper)=>haiPaper.aiSummary,
         {
             onDelete: 'CASCADE',
         }
     )
     @JoinColumn() 
-    paper!: Paper;
+    haiPaper!: HaiPaper;
 } 
