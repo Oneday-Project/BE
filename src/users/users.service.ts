@@ -2,7 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/users.entity';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 @Injectable()
 export class UsersService {
 
@@ -97,6 +97,19 @@ export class UsersService {
       throw new NotFoundException('존재하지 않는 사용자입니다!');
     }
 
+    if(updateUserDto.nickname){
+      const nickNameExists = await this.userRepository.exists({
+        where: {
+          id: Not(id),
+          nickname: updateUserDto.nickname,
+        }
+      })
+      
+      if(nickNameExists) {
+        throw new ConflictException('이미 존재하는 nickname 입니다!');
+      }
+    }
+
     await this.userRepository.update(
       {id},
       updateUserDto,
@@ -121,7 +134,7 @@ export class UsersService {
       throw new NotFoundException('존재하지 않는 사용자입니다!');
     }
 
-    this.userRepository.delete(id);
+    await this.userRepository.delete(id);
 
     return `id:${id}인 사용자 삭제완료`; 
   }

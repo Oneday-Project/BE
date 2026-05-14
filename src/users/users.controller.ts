@@ -3,52 +3,76 @@ import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from './const/roles.const';
-import { IsMyInfoOrAdminGuard } from 'src/auth/guard/is-resource-mine-or-admin.guard';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { User } from './decorator/user.decorator';
 @Controller('users')
 @ApiBearerAuth()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-
   @Get()
   @ApiOperation({
-    description: '모든 사용자 정보를 가져오는 API', 
+    description: '모든 사용자 정보를 가져오는 API(관리자 권한)', 
   })
   @Roles(RolesEnum.ADMIN)
-  findAllUser() {
+  findAllUserByAdmin() {
     return this.usersService.findAllUser();
+  }
+
+  @Get('me')
+  @ApiOperation({
+    description: '사용자 자신의 정보를 가져오는 API', 
+  })
+  findMyInfo(@User('id') id: number) {
+    return this.usersService.findUserById(id);
   }
 
   @Get(':userId')
   @ApiOperation({
-    description: 'userId 기반 단일 사용자 정보를 가져오는 API', 
+    description: 'userId 기반 단일 사용자 정보를 가져오는 API(관리자 권한)', 
   })
-  @UseGuards(IsMyInfoOrAdminGuard)
-  findUserById(@Param('userId', ParseIntPipe) id: number) {
-    return this.usersService.findUserById(id);
+  @Roles(RolesEnum.ADMIN)
+  findUserByAdmin(@Param('userId', ParseIntPipe) userId: number) {
+    return this.usersService.findUserById(userId);
+  }
+
+  @Patch('me')
+  @ApiOperation({
+    description: '사용자 자신의 정보를 수정하는 API', 
+  })
+  updateMyInfo(
+    @User('id') id: number, 
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return this.usersService.updateUser(id, updateUserDto);
   }
 
   @Patch(':userId')
-  @Roles(RolesEnum.ADMIN)
   @ApiOperation({
-    description: 'userId 기반 단일 사용자 정보를 수정하는 API', 
+    description: 'userId 기반 단일 사용자 정보를 수정하는 API(관리자 권한)', 
   })
-  @UseGuards(IsMyInfoOrAdminGuard)
-  updateUser(
+  @Roles(RolesEnum.ADMIN)
+  updateUserByAdmin(
     @Param('userId', ParseIntPipe) id: number, 
     @Body() updateUserDto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(id, updateUserDto);
   }
 
+  @Delete('me')
+  @ApiOperation({
+    description: '사용자 자신의 정보를 삭제하는 API', 
+  })
+  removeMyInfo(@User('id') id: number) {
+    return this.usersService.removeUser(id);
+  }
+
   @Delete(':userId')
-  @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: 'userId 기반 단일 사용자 정보를 삭제하는 API', 
   })
-  @UseGuards(IsMyInfoOrAdminGuard)
-  removeUser(@Param('userId', ParseIntPipe) id: number) {
+  @Roles(RolesEnum.ADMIN)
+  removeUserByAdmin(@Param('userId', ParseIntPipe) id: number) {
     return this.usersService.removeUser(id);
   }
 }
