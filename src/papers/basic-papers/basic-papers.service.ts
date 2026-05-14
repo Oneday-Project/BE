@@ -417,130 +417,101 @@ export class BasicPapersService {
   // ══════════════════════════════════════════════════════════════════
 
   async fetchPapers(arxivIds: string) {
-    const ids = arxivIds.trim().split(/\s+/); // 공백 기준으로 분리
-    const results: object[] = [];
+    const ids = arxivIds.trim().split(/\s+/).map(id => id.trim().replace(/v\d+$/, '')); // 공백 기준 분리 + 버전 번호 제거
+    const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string;
 
-    for (let i = 0; i < ids.length; i++) {
-      try {
-        const result = await this.fetchSingle(ids[i]);
-        results.push(result);
-      } catch (e) {
-        results.push({ arxivId: ids[i], error: e instanceof Error ? e.message : '수집 실패' });
-      }
-      if (i < ids.length - 1) await this.delay(REQUEST_DELAY_MS); // 마지막 ID가 아니면 딜레이
-    }
-
-    return results;
-  }
-
-  private async fetchSingle(arxiv: string) {
-    const cleanId = arxiv.trim().replace(/v\d+$/, ''); // 입력값 앞뒤 공백 제거 및 버전 번호(v1, v2 등) 제거
-
-    // ── 0. DB 사전 확인 — 두 테이블 병렬 조회 ─────────────────────────────
-    const [existingArxivCheck, existingSsCheck] = await Promise.all([
-      this.arxivRepository.findOne({ where: { arxivId: cleanId } }), // raw_arxiv에 이미 있는지 확인
-      this.ss2Repository.findOne({ where: { arxivId: cleanId } }),    // raw_semantic_scholar에 이미 있는지 확인
+    // ── 1. 모든 ID에 대해 DB 병렬 조회 ──────────────────────────────────
+    const [existingArxivList, existingSsList] = await Promise.all([
+      this.arxivRepository.findBy({ arxivId: In(ids) }),
+      this.ss2Repository.findBy({ arxivId: In(ids) }),
     ]);
+    const existingArxivMap = new Map(existingArxivList.map(r => [r.arxivId, r]));
+    const existingSsMap    = new Map(existingSsList.map(r => [r.arxivId, r]));
 
-    if (existingArxivCheck && existingSsCheck) { // 둘 다 있으면 API 호출 없이 DB 데이터 반환
+    // ── 2. arXiv DB에 없는 ID만 배치 API 1회 호출 ────────────────────────
+    // 기존: 논문마다 개별 arXiv API 호출 (N번) → 변경: id_list로 한 번에 요청 (1번)
+    const missingArxivIds = ids.filter(id => !existingArxivMap.has(id));
+    const newArxivMap = new Map<string, ArxivParsed>();
+
+    if (missingArxivIds.length > 0) {
+      const fetched = await this.fetchArxivEntries(missingArxivIds); // 내부에서 id_list 배치 처리
+      fetched.forEach(e => newArxivMap.set(e.arxivId, e));
+
+      if (fetched.length > 0) {
+        await this.arxivRepository.insert(
+          fetched.map(e => this.arxivRepository.create({
+            arxivId:  e.arxivId,
+            title:    e.title,
+            authors:  e.authors,
+            abstract: e.abstract,
+            category: e.categories,
+            pdfUrl:   e.pdfUrl,
+          })),
+        );
+      }
+    }
+
+    // ── 3. SS DB에 없는 ID만 배치 API 호출 ───────────────────────────────
+    // 기존: 논문마다 SS 단건 API 호출 (N번) → 변경: batch endpoint로 한 번에 요청
+    const missingSsIds = ids.filter(id => !existingSsMap.has(id));
+    const newSsDataMap = new Map<string, any>(); // arxivId → SS raw 응답
+
+    for (let i = 0; i < missingSsIds.length; i += SS2_BATCH_SIZE) {
+      const batch = missingSsIds.slice(i, i + SS2_BATCH_SIZE);
+      const response = await fetch(`${SS2_BATCH_URL}?fields=${SS2_FIELDS}`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': SS2_API_KEY },
+        body:    JSON.stringify({ ids: batch.map(id => `ArXiv:${id}`) }),
+      });
+
+      if (!response.ok) {
+        if (i + SS2_BATCH_SIZE < missingSsIds.length) await this.delay(REQUEST_DELAY_MS);
+        continue;
+      }
+
+      const data: (any | null)[] = await response.json();
+      data.forEach((paper, idx) => {
+        if (!paper) return;
+        const arxivId = (paper.externalIds?.ArXiv as string | undefined) ?? batch[idx];
+        newSsDataMap.set(arxivId, paper);
+      });
+
+      if (i + SS2_BATCH_SIZE < missingSsIds.length) await this.delay(REQUEST_DELAY_MS);
+    }
+
+    // SS 새 데이터 DB 저장
+    if (newSsDataMap.size > 0) {
+      const records = [...newSsDataMap.entries()].map(([arxivId, paper]) => this.mapToPaper(paper, arxivId));
+      const unique  = [...new Map(records.map(r => [r.ss2Id, r])).values()]; // ss2Id 기준 중복 제거
+      await this.ss2Repository.upsert(unique, ['ss2Id']);
+    }
+
+    // ── 4. 결과 조합 ────────────────────────────────────────────────────
+    return ids.map(id => {
+      const arxivFromDb  = existingArxivMap.get(id);
+      const arxivFromApi = newArxivMap.get(id);
+      const arxivData    = arxivFromDb ?? arxivFromApi;
+
+      const ssFromDb  = existingSsMap.get(id);
+      const ssFromApi = newSsDataMap.get(id);
+
+      if (!arxivData) {
+        return { arxivId: id, error: `논문을 찾을 수 없습니다: "${id}"` };
+      }
+      if (!ssFromDb && !ssFromApi) {
+        return { arxivId: id, error: `Semantic Scholar에서 논문을 찾을 수 없습니다: "${id}"` };
+      }
+
       return {
-        arxivId: cleanId,
-        title: existingArxivCheck.title,
-        categories: existingArxivCheck.category,
-        arxivStatus: 'already_exists', // 이미 존재함을 나타내는 상태값
-        ssStatus: 'already_exists',
-        citationCount: existingSsCheck.citationCount,
-        influentialCitationCount: existingSsCheck.influenceScore,
+        arxivId:                 id,
+        title:                   arxivData.title,
+        categories:              arxivFromDb ? arxivFromDb.category : arxivFromApi!.categories,
+        arxivStatus:             arxivFromDb ? 'already_exists' : 'saved',
+        ssStatus:                ssFromDb    ? 'already_exists' : 'saved',
+        citationCount:           ssFromApi?.citationCount            ?? ssFromDb?.citationCount  ?? null,
+        influentialCitationCount: ssFromApi?.influentialCitationCount ?? ssFromDb?.influenceScore ?? null,
       };
-    }
-
-    // ── 1. arXiv 데이터 확보 — DB에 있으면 API 호출 생략 ──────────────────
-    let arxivId:    string;
-    let title:      string;
-    let authors:    string[];
-    let abstract:   string;
-    let categories: string[];
-    let pdfUrl:     string | null;
-
-    if (existingArxivCheck) {
-      // DB에서 이미 가져온 데이터 재사용 (arXiv API 호출 생략)
-      arxivId    = existingArxivCheck.arxivId;
-      title      = existingArxivCheck.title;
-      authors    = existingArxivCheck.authors ?? [];
-      abstract   = existingArxivCheck.abstract;
-      categories = existingArxivCheck.category ?? [];
-      pdfUrl     = existingArxivCheck.pdfUrl;
-    } else {
-      // arXiv API 호출
-      const arxivUrl = `${ARXIV_API_BASE}?id_list=${cleanId}&max_results=1`; // 특정 ID 단건 조회 URL
-      const arxivResponse = await fetch(arxivUrl); // arXiv API 요청
-      if (!arxivResponse.ok) { // 요청 실패 시 에러
-        throw new Error(`arXiv API 오류: ${arxivResponse.status} ${arxivResponse.statusText}`);
-      }
-
-      const xmlText = await arxivResponse.text(); // XML 응답 텍스트 읽기
-      const parsed = await parseStringPromise(xmlText, { explicitArray: true }); // XML → JS 객체 변환
-      const entries: any[] = parsed?.feed?.entry ?? []; // 논문 항목 추출
-
-      if (entries.length === 0) { // 결과가 없으면 논문을 찾지 못한 것
-        throw new NotFoundException(`논문을 찾을 수 없습니다: "${arxiv}"`);
-      }
-
-      const entry    = entries[0]; // 단건 조회이므로 첫 번째 항목만 사용
-      const idUrl: string = entry.id?.[0] ?? ''; // arXiv URL 형태의 ID
-      arxivId    = idUrl.split('/').pop()?.replace(/v\d+$/, '') ?? ''; // URL에서 버전 없는 순수 ID 추출
-      title      = (entry.title?.[0] ?? '').replace(/\s+/g, ' ').trim(); // 제목 정리
-      authors    = (entry.author ?? []).map((a: any) => a.name?.[0] as string).filter(Boolean); // 저자 목록
-      abstract   = (entry.summary?.[0] ?? '').replace(/\s+/g, ' ').trim(); // 초록 정리
-      categories = (entry.category ?? []).map((c: any) => c.$.term as string); // 카테고리 목록
-      const links: any[] = entry.link ?? []; // 링크 목록
-      const pdfLink = links.find((l) => l.$?.type === 'application/pdf'); // PDF 링크 찾기
-      pdfUrl     = pdfLink?.$?.href ?? null; // PDF URL 추출 (없으면 null)
-    }
-
-    // SS API 단건 조회 (저장 전 먼저 확인)
-    const ssUrl = `${SS2_PAPER_URL}/ArXiv:${arxivId}?fields=${SS2_FIELDS}`; // arXiv ID로 SS 단건 조회 URL 구성
-
-    //  Semantic Scholar API 키
-    const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string
-
-    const ssResponse = await fetch(ssUrl, { headers: { 'x-api-key': SS2_API_KEY } }); // SS API 요청
-
-    if (ssResponse.status === 404) { // SS에 해당 논문이 없는 경우
-      throw new NotFoundException(`Semantic Scholar에서 논문을 찾을 수 없습니다: "${arxivId}"`);
-    }
-    if (!ssResponse.ok) { // 기타 에러
-      throw new Error(`SS2 API 오류: ${ssResponse.status} ${ssResponse.statusText}`);
-    }
-
-    const ssData = await ssResponse.json(); // SS 응답 파싱
-    const citationCount: number | null = ssData.citationCount ?? null; // 인용 수 (없으면 null)
-    const influentialCitationCount: number | null = ssData.influentialCitationCount ?? null; // 영향력 있는 인용 수 (없으면 null)
-
-    // raw_arxiv 저장
-    let arxivStatus: 'saved' | 'already_exists'; // 저장 결과 상태를 담을 변수
-
-    if (existingArxivCheck) { // 이미 raw_arxiv에 있으면
-      arxivStatus = 'already_exists'; // 상태만 표시하고 저장하지 않음
-    } else { // 없으면 새로 저장
-      await this.arxivRepository.insert(
-        this.arxivRepository.create({ arxivId, title, authors, abstract, category: categories, pdfUrl: pdfUrl ?? '' }), // pdfUrl이 null이면 빈 문자열 저장
-      );
-      arxivStatus = 'saved';
-    }
-
-    // raw_semantic_scholar 저장
-    let ssStatus: 'saved' | 'already_exists'; // SS 저장 결과 상태
-    const existingSs = await this.ss2Repository.findOne({ where: { ss2Id: ssData.paperId } }); // ss2Id로 중복 확인 (arxivId와 별개로 SS 고유 ID로도 체크)
-
-    if (existingSs) { // 이미 SS 데이터가 있으면
-      ssStatus = 'already_exists';
-    } else { // 없으면 새로 저장
-      await this.ss2Repository.insert(this.mapToPaper(ssData, arxivId)); // SS 응답을 엔티티로 변환 후 저장
-      ssStatus = 'saved';
-    }
-
-    return { arxivId, title, categories, arxivStatus, ssStatus, citationCount, influentialCitationCount }; // 수집 결과 반환
+    });
   }
 
   // ══════════════════════════════════════════════════════════════════
