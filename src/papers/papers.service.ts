@@ -136,10 +136,6 @@ export class PapersService {
 
     const user = await this.usersService.findUserById(userId)
 
-    if(!user){
-      throw new NotFoundException('사용자 정보가 없습니다');
-    }
-
     const bookmarkRecord = await paperbookmarksRepository.findOne({
       where: { paper: { arxivId }, user: { id: userId } },
     });

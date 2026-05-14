@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateMajorCourseDto } from './dto/create-major-course.dto';
 import { UpdateMajorCourseDto } from './dto/update-major-course.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -39,7 +39,7 @@ export class MajorCoursesService {
     });
 
     if(!courseExists){
-      throw new BadRequestException('존재하지 않는 전공과목 입니다!')
+      throw new NotFoundException('존재하지 않는 전공과목 입니다!')
     }
 
     await this.majorCourseRepository.update(course_id, dto);
@@ -58,7 +58,7 @@ export class MajorCoursesService {
     });
 
     if(!courseExists){
-      throw new BadRequestException('존재하지 않는 전공과목 입니다!')
+      throw new NotFoundException('존재하지 않는 전공과목 입니다!')
     }
 
     await this.majorCourseRepository.delete(course_id);

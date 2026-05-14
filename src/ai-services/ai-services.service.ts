@@ -73,9 +73,6 @@ export class AiServicesService {
         }
 
         const paper = await this.papersService.getPaperByArxivId(arxivId);
-        if (!paper){
-            throw new BadRequestException('존재하지 않는 논문입니다!');
-        }
 
         const paperAiSummary = this.paperAiSummaryRepository.create({
             ...dto, 
@@ -137,9 +134,6 @@ export class AiServicesService {
         }
 
         const haiPaper = await this.haiPapersService.getHaiPaperById(id);
-        if (!haiPaper){
-            throw new BadRequestException('존재하지 않는 논문입니다!');
-        }
 
         const haiPaperAiSummary = this.haiPaperAiSummaryRepository.create({
             ...dto, 
