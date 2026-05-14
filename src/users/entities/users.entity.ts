@@ -27,7 +27,7 @@ export class User extends BaseModel {
     @Exclude({
         toPlainOnly: true,
     })
-    password!: string;
+    password!: string; // 해시로 암호화된 PW
 
     @Column({
         enum: RolesEnum,

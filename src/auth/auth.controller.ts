@@ -1,10 +1,12 @@
-import { Body, Controller, Post, Headers, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Headers, UseGuards, Patch } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { RefreshTokenGuard } from './guard/bearer-token.guard';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { User } from 'src/users/decorator/user.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller('auth')
 @ApiBearerAuth()
@@ -69,5 +71,14 @@ export class AuthController {
     return {
       refreshToken: newToken,
     }
+  }
+
+  @Patch('password')
+  @ApiOperation({ description: '비밀번호 변경 API' })
+  changePassword(
+      @User('id') id: number,
+      @Body() dto: ChangePasswordDto,
+  ) {
+      return this.authService.changePassword(id, dto);
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import { envVariableKeys } from 'src/common/const/env.const';
 import { LoginUserDto } from './dto/login-user.dto';
 import { User } from 'src/users/entities/users.entity';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -154,6 +155,25 @@ export class AuthService {
     }catch(e){
       throw new UnauthorizedException('토큰이 만료됐거나 잘못된 토큰입니다.');
     }
-}
+  }
+
+  // 비밀번호 변경
+  async changePassword(userId: number, dto: ChangePasswordDto) {
+    const user = await this.usersService.findUserById(userId);
+
+    // 현재 비밀번호가 맞는지 확인
+    const passOk = await bcrypt.compare(dto.currentPassword, user.password);
+    if (!passOk) {
+        throw new UnauthorizedException('현재 비밀번호가 틀렸습니다.');
+    }
+
+    // 새로운 비밀번호를 해시 후 user 엔티티에 저장
+    const newPassword = await bcrypt.hash(
+        dto.newPassword,
+        Number(this.configService.get<number>(envVariableKeys.hashRounds)),
+    );
+
+    return this.usersService.updatePassword(userId, newPassword);
+  }
 
 }
