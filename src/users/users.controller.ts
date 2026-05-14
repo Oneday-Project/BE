@@ -38,7 +38,7 @@ export class UsersController {
 
   @Patch('me')
   @ApiOperation({
-    description: '사용자 자신의 정보를 수정하는 API', 
+    description: '사용자 자신의 정보(닉네임)를 수정하는 API', 
   })
   updateMyInfo(
     @User('id') id: number, 
@@ -61,7 +61,7 @@ export class UsersController {
 
   @Delete('me')
   @ApiOperation({
-    description: '사용자 자신의 정보를 삭제하는 API', 
+    description: '사용자 자신의 정보를 삭제하는 API(회원 탈퇴)', 
   })
   removeMyInfo(@User('id') id: number) {
     return this.usersService.removeUser(id);

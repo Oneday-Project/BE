@@ -76,16 +76,6 @@ export class UsersService {
     return user;
   }
 
-  // auth모듈에서 사용하는 함수
-  async getUserByEmail(email: string){
-    return this.userRepository.findOne({
-        where: {
-            email,
-        },
-    }) // 여기서 null값이 반환된다면 존재X. 그렇지 않는다면 특정 사용자가 존재
-  }
-
-
   async updateUser(id: number, updateUserDto: UpdateUserDto) {
     const user = await this.userRepository.exists({
       where: {
@@ -122,7 +112,6 @@ export class UsersService {
     });
   }
 
-
   async removeUser(id: number) {
     const user = await this.userRepository.exists({
       where: {
@@ -136,6 +125,25 @@ export class UsersService {
 
     await this.userRepository.delete(id);
 
-    return `id:${id}인 사용자 삭제완료`; 
+    return true; 
   }
+
+  // auth모듈에서 사용하는 함수
+  async getUserByEmail(email: string){
+    return this.userRepository.findOne({
+        where: {
+            email,
+        },
+    }) // 여기서 null값이 반환된다면 존재X. 그렇지 않는다면 특정 사용자가 존재
+  }
+
+  // auth모듈에서 사용하는 함수
+  async updatePassword(id: number, password: string) {
+    await this.userRepository.update(
+      {id}, 
+      {password},
+    );
+    return true;
+  }
+
 }
