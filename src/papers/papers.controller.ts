@@ -7,7 +7,7 @@ import { User } from 'src/users/decorator/user.decorator';
 import { TransactionInterceptor } from 'src/common/interceptor/transaction.interceptor';
 import { QueryRunner } from 'src/common/decorator/query-runner.decorator';
 import type { QueryRunner as QR } from 'typeorm';
-import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { GetAuthorsPaginationDto } from './dto/get-authors-pagination.dto';
 
@@ -42,6 +42,7 @@ export class PapersController {
     return this.papersService.getAllPapers(dto);
   }
 
+  
   // arxivId 기반 단일 논문 GET
   @Get('paper/:arxivId')
   @ApiOperation({
@@ -52,6 +53,7 @@ export class PapersController {
   ){
     return this.papersService.getPaperByArxivId(arxivId);
   }
+
 
   @Post('bookmark/:arxivId')
   @ApiOperation({
@@ -66,6 +68,7 @@ export class PapersController {
     return this.papersService.togglePaperBookmark(arxivId, userId, qr);
   }
 
+
   @Get('authors')
   @ApiOperation({
     description: '기본 논문의 모든 저자들을 가져오는 API',
@@ -77,8 +80,20 @@ export class PapersController {
     return this.papersService.getAllAuthors(dto);
   }
 
+
+  @Get('star-tiers')
+  @ApiExcludeEndpoint()
+  @ApiOperation({
+    description: '각 논문의 별점 티어를 할당하는 API',
+  })
+  @Roles(RolesEnum.ADMIN)
+  assignStarTiers(){
+    return this.papersService.assignStarTiers();
+  }
+
   
   @Delete()
+  @ApiExcludeEndpoint()
   @ApiOperation({
     description: '기본 논문 삭제 API',
   })

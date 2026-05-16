@@ -20,24 +20,24 @@ export class Paper extends BaseModel {
     @JoinTable()
     authors!: Author[];
 
-    @Column({ type: 'text', nullable: true })
+    @Column({ type: 'text'})
     abstract!: string; // 초록
 
     @ManyToMany(() => ResearchField, (category) => category.papers)
     @JoinTable()
     researchFields!: ResearchField[];
 
-    @Column({ name: 'published_date', nullable: true })
+    @Column({ name: 'published_date'})
     publishedDate!: string; // 발행일 
 
-    @Column({ name: 'citation_count', type: 'int', nullable: true })
+    @Column({ name: 'citation_count', type: 'int'})
     citationCount!: number; // 이 논문이 인용된 수(인용수)
 
-    @Column({ name: 'influence_score', type: 'float', nullable: true })
+    @Column({ name: 'influence_score', type: 'float'})
     influenceScore!: number; // 영향력 지표
 
     @Column({ nullable: true })
-    journal!: string; // 저널 / 학회
+    journal?: string; // 저널 / 학회
 
     @Column({ name: 'pdf_url', nullable: false })
     pdfUrl!: string; // pdf링크
@@ -55,4 +55,9 @@ export class Paper extends BaseModel {
         default: 0
     })
     bookmarkCount!: number;
+
+    @Column({
+        nullable: true,
+    })
+    starTier?: number;
 }

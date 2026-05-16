@@ -168,6 +168,52 @@ export class PapersService {
 
   }
 
+  // 논문 starTier 일괄 계산 및 저장
+  async assignStarTiers() {
+    const fieldThresholds: Record<string, { star3: number; star2: number }> = {
+      'cs.AI':   { star3: 1000, star2: 150 },
+      'cs.LG':   { star3: 1000, star2: 150 },
+      'cs.CV':   { star3: 800,  star2: 120 },
+      'cs.CL':   { star3: 800,  star2: 120 },
+      'stat.ML': { star3: 500,  star2: 80  },
+      'cs.IR':   { star3: 300,  star2: 50  },
+      'cs.MM':   { star3: 300,  star2: 50  },
+      'cs.SD':   { star3: 200,  star2: 40  },
+      'cs.RO':   { star3: 100,  star2: 20  },
+      'cs.SE':   { star3: 80,   star2: 15  },
+      'cs.HC':   { star3: 50,   star2: 10  },
+    };
+
+    const papers = await this.papersRepository.find({
+      relations: { researchFields: true },
+      select: {
+        arxivId: true,
+        influenceScore: true,
+        researchFields: { name: true },
+      },
+    });
+
+    for (const paper of papers) {
+      if (paper.influenceScore === null || paper.researchFields.length === 0) continue;
+
+      let starTier = 1;
+
+      for (const field of paper.researchFields) {
+        const threshold = fieldThresholds[field.name];
+        if (!threshold) continue;
+
+        if (paper.influenceScore >= threshold.star3) {
+          starTier = Math.max(starTier, 3);
+        } else if (paper.influenceScore >= threshold.star2) {
+          starTier = Math.max(starTier, 2);
+        }
+      }
+
+      await this.papersRepository.update({ arxivId: paper.arxivId }, { starTier });
+    }
+
+    return { updated: papers.length };
+  }
 
   // 논문 삭제 (arxivId 목록 또는 날짜 범위)
   async deletePapers(arxivIds?: string, startDate?: string, endDate?: string) {
