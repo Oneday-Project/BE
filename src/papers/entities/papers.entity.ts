@@ -60,4 +60,7 @@ export class Paper extends BaseModel {
         nullable: true,
     })
     starTier?: number;
+
+    @Column({ type: 'text', nullable: true })
+    embedding?: string;
 }
