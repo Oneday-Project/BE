@@ -67,7 +67,8 @@ import { HaiPaperAiSummary } from './ai-services/entities/hai-paper-ai-summaries
           PaperBookmark,
           HaiPaperAiSummary,
         ],
-        synchronize: true,
+        synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? false: true, 
+        ssl: configService.get<string>(envVariableKeys.env) === 'prod'? { rejectUnauthorized: false } : false,
       }),
       inject: [ConfigService]
     }),

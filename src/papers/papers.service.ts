@@ -215,6 +215,48 @@ export class PapersService {
     return { updated: papers.length };
   }
 
+
+  // 임시 랜덤 벡터 생성 함수
+  async saveTestEmbedding(arxivId: string) {
+    // 1536차원 임시 랜덤 벡터 생성
+    const randomEmbedding = Array.from(
+        { length: 1536 }, 
+        () => Math.random()
+    );
+
+    await this.papersRepository.update(
+        { arxivId },
+        { embedding: JSON.stringify(randomEmbedding) },
+    );
+
+    return { success: true };
+  }
+
+  async getSimilarPapers(arxivId: string, limit: number = 5) {
+      const paper = await this.papersRepository.findOne({
+          where: { arxivId },
+          select: { arxivId: true, embedding: true },
+      });
+
+      if (!paper || !paper.embedding) {
+          throw new NotFoundException('해당 논문의 임베딩이 존재하지 않습니다.');
+      }
+
+      const similarPapers = await this.papersRepository.query(
+        `SELECT p."arxivId", p.title, p.published_date, p."starTier",
+                1 - (p.embedding::vector <=> $1::vector) AS similarity
+        FROM paper p
+        WHERE p."arxivId" != $2
+          AND p.embedding IS NOT NULL
+        ORDER BY p.embedding::vector <=> $1::vector
+        LIMIT $3`,
+        [paper.embedding, arxivId, limit]
+      );
+
+      return similarPapers;
+  }
+
+
   // 논문 삭제 (arxivId 목록 또는 날짜 범위)
   async deletePapers(arxivIds?: string, startDate?: string, endDate?: string) {
     if (!arxivIds && !startDate && !endDate) {

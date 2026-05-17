@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, Post, Query, UseInterceptors } from '@nestjs/common';
+import { Controller, Delete, Get, Param, ParseIntPipe, Post, Query, UseInterceptors } from '@nestjs/common';
 import { PapersService } from './papers.service';
 import { GetPapersPaginationDto } from './dto/get-papers-pagination.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
@@ -81,7 +81,7 @@ export class PapersController {
   }
 
 
-  @Get('star-tiers')
+  @Post('star-tiers')
   @ApiExcludeEndpoint()
   @ApiOperation({
     description: '각 논문의 별점 티어를 할당하는 API',
@@ -104,6 +104,25 @@ export class PapersController {
     @Query('endDate') endDate?: string,
   ) {
     return this.papersService.deletePapers(arxivIds, startDate, endDate);
+  }
+
+
+
+  @Post('paper/:arxivId/embedding')
+  @ApiOperation({ description: '단일 논문에 랜덤 임베딩 벡터 할당 API' })
+  @ApiExcludeEndpoint()
+  saveTestEmbedding(@Param('arxivId') arxivId: string) {
+      return this.papersService.saveTestEmbedding(arxivId);
+  }
+
+  @Get('paper/:arxivId/similar')
+  @IsPublic()
+  @ApiOperation({ description: '유사 논문 추천 API' })
+  getSimilarPapers(
+      @Param('arxivId') arxivId: string,
+      @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+      return this.papersService.getSimilarPapers(arxivId, limit);
   }
 
 }
