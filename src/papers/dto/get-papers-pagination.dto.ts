@@ -15,10 +15,12 @@ export class GetPapersPaginationDto extends BasePaginationDto{
     })
     keyword?: string;
 
+    
     @IsString({ each: true })
     @IsOptional()
     @Transform(({ value }) => Array.isArray(value) ? value : [value])
     tags?: string[];
+
 
     @ApiPropertyOptional({
         description: '최근 N년으로 검색',
@@ -28,6 +30,7 @@ export class GetPapersPaginationDto extends BasePaginationDto{
     @IsOptional()
     yearRange?: number;
 
+
     @ApiPropertyOptional({
         description: '시작일(기간 직접 입력) 검색',
         example: '2020-01-01', 
@@ -36,6 +39,7 @@ export class GetPapersPaginationDto extends BasePaginationDto{
     @IsOptional()
     startDate?: string;
 
+
     @ApiPropertyOptional({
         description: '종료일(기간 직접 입력) 검색',
         example: '2025-12-31', 
@@ -43,6 +47,16 @@ export class GetPapersPaginationDto extends BasePaginationDto{
     @IsString()
     @IsOptional()
     endDate?: string;
+
+
+    @ApiPropertyOptional({
+        description: '중요도 별점(1~3개)',
+        example: 3, 
+    })
+    @IsNumber()
+    @IsOptional()
+    starTier?: number;
+
 
     @IsArray()
     @IsString({
