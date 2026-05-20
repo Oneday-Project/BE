@@ -33,4 +33,7 @@ export class HaiPaper extends BaseModel{
 
     @OneToOne(()=>HaiPaperAiSummary, (aiSummary)=>aiSummary.haiPaper)
     aiSummary!: HaiPaperAiSummary;
+
+    @Column({ type: 'text', nullable: true })
+    embedding?: string;
 }
