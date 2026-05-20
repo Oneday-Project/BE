@@ -46,6 +46,8 @@ import { RoadmapTask } from './roadmap/entities/roadmap-task.entity';
         HASH_ROUNDS: Joi.number().required(),
         ACCESS_TOKEN_SECRET: Joi.string().required(),
         REFRESH_TOKEN_SECRET: Joi.string().required(),
+        SEMANTIC_SCHOLAR_API_KEY: Joi.string().required(),
+        OPENAI_API_KEY: Joi.string().required(),
       })
     }),
     TypeOrmModule.forRootAsync({ 

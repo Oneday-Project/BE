@@ -11,6 +11,8 @@ const refreshTokenSecret = 'REFRESH_TOKEN_SECRET';
 
 const semanticScholarApi = 'SEMANTIC_SCHOLAR_API_KEY';
 
+const openaiApiKey = 'OPENAI_API_KEY';
+
 export const envVariableKeys = {
     env,
     dbType,
@@ -23,4 +25,5 @@ export const envVariableKeys = {
     accessTokenSecret,
     refreshTokenSecret,
     semanticScholarApi,
+    openaiApiKey,
 }
