@@ -25,18 +25,19 @@ export class AiServicesController {
   getPaperAiSummary(
     @Param('arxivId') arxivId: string
   ){
-    return this.aiServicesService.getPaperAiSummaryByArxivId(arxivId);
+    return this.aiServicesService.getPaperAiSummaryByArxivId(arxivId); 
   }
 
   @Post('papers/:arxivId')
   @ApiOperation({
-    description: 'arxivId 기반 단일 논문 AI 요약을 생성하는 API', 
+    description: 'arxivId 기반 단일 논문 AI 요약을 생성하는 API',  
   })
-  createPaperAiSummary(
+  generatePaperAiSummary(
     @Param('arxivId') arxivId: string,
-    @Body() dto: CreatePaperAiSummaryDTO,
+    //@Body() dto: CreatePaperAiSummaryDTO,
   ){
-    return this.aiServicesService.createPaperAiSummary(arxivId, dto);
+    //return this.aiServicesService.createPaperAiSummary(arxivId, dto);
+    return this.aiServicesService.generatePaperAiSummary(arxivId);
   }
 
 
