@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { AiServicesService } from './ai-services.service';
 import { CreatePaperAiSummaryDTO } from './dto/create-paper-ai-summary.dto';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation } from '@nestjs/swagger';
 import { CreateHaiPaperAiSummaryDTO } from './dto/create-hai-paper-ai-summary.dto';
 
 @Controller('ai-services')
@@ -69,6 +69,13 @@ export class AiServicesController {
     @Body() dto: CreateHaiPaperAiSummaryDTO, 
   ){
     return this.aiServicesService.createHaiPaperAiSummary(id, dto);
+  }
+
+  @Post('papers/:arxivId/embedding')
+  @ApiOperation({ description: '단일 논문에 GPT 임베딩 벡터 할당 API' })
+  @ApiExcludeEndpoint()
+  saveTestEmbedding(@Param('arxivId') arxivId: string) {
+      return this.aiServicesService.generatePaperEmbedding(arxivId);
   }
 
 
