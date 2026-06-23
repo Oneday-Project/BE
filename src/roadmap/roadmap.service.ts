@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RoadmapTask, RoadmapStage } from './entities/roadmap-task.entity';
-import { AnalyzeRoadmapDto } from './dto/analyze-roadmap.dto';
+import {
+    AnalyzeRoadmapDto,
+    Q9_NONE,
+    Q10_NONE,
+    GPA_BANDS,
+} from './dto/analyze-roadmap.dto';
 
 @Injectable()
 export class RoadmapService {
@@ -11,11 +16,19 @@ export class RoadmapService {
         private readonly roadmapTaskRepository: Repository<RoadmapTask>,
     ) {}
 
+    // GPA 구간을 점수로 환산 (구간 인덱스 * 2.5 -> 0 / 2.5 / 5 / 7.5 / 10)
+    private gpaScore(gpaBand: string): number {
+        return GPA_BANDS.indexOf(gpaBand as (typeof GPA_BANDS)[number]) * 2.5;
+    }
+
     private calculateScore(dto: AnalyzeRoadmapDto): number {
         const q3to8 = dto.q3 + dto.q4 + dto.q5 + dto.q6 + dto.q7 + dto.q8;
-        const q9Score = Math.min(dto.q9.length * 2.5, 10);
-        const q10Score = Math.min(dto.q10.length * 2.5, 10);
-        return q3to8 + q9Score + q10Score + dto.q11 + dto.q12;
+        // '없음'은 점수에 포함하지 않음 (선택 시 0점)
+        const q9Count = dto.q9.filter((item) => item !== Q9_NONE).length;
+        const q10Count = dto.q10.filter((item) => item !== Q10_NONE).length;
+        const q9Score = Math.min(q9Count * 2.5, 10);
+        const q10Score = Math.min(q10Count * 2.5, 10);
+        return q3to8 + q9Score + q10Score + dto.q11 + this.gpaScore(dto.gpaBand);
     }
 
     private determineStage(totalScore: number): RoadmapStage {
@@ -36,7 +49,8 @@ export class RoadmapService {
         const weaknesses: string[] = [];
         if (dto.q5 <= 2.5) weaknesses.push('프로젝트 경험 부족');
         if (dto.q7 <= 2.5) weaknesses.push('연구 경험 부족');
-        if (dto.gpaBand?.includes('2.')) weaknesses.push('학점 개선 필요');
+        // 하위 2개 구간('2.5 미만', '2.5 이상 ~ 3.0 미만')이면 학점 개선 필요
+        if (this.gpaScore(dto.gpaBand) <= 2.5) weaknesses.push('학점 개선 필요');
         return weaknesses;
     }
 
