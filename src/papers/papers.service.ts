@@ -177,11 +177,11 @@ export class PapersService {
       'cs.CL':   { star3: 800,  star2: 120 },
       'stat.ML': { star3: 500,  star2: 80  },
       'cs.IR':   { star3: 300,  star2: 50  },
-      'cs.MM':   { star3: 300,  star2: 50  },
+      'cs.MM':   { star3: 100,  star2: 50  },
       'cs.SD':   { star3: 200,  star2: 40  },
-      'cs.RO':   { star3: 100,  star2: 20  },
+      'cs.RO':   { star3: 60,  star2: 20  },
       'cs.SE':   { star3: 80,   star2: 15  },
-      'cs.HC':   { star3: 50,   star2: 10  },
+      'cs.HC':   { star3: 100,   star2: 10  },
     };
 
     const papers = await this.papersRepository.find({
