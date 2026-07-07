@@ -90,6 +90,17 @@ export class AiServicesController {
     return this.aiServicesService.createHaiPaperAiSummary(id, dto);
   }
 
+  @Post('papers/batch/embedding')
+  @ApiOperation({
+    description: '임베딩이 없는 모든 논문에 대해 배치 단위로 임베딩 벡터를 생성하는 API(관리자 권한)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  generateAllPaperEmbeddings(
+    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
+  ){
+    return this.aiServicesService.generateAllPaperEmbeddings(batchSize);
+  }
+
   @Post('papers/:arxivId/embedding')
   @ApiOperation({ description: '단일 논문에 GPT 임베딩 벡터 할당 API' })
   @ApiExcludeEndpoint()

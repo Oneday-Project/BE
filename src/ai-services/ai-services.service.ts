@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { PaperAiSummary } from './entities/paper-ai-summaries.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { CreatePaperAiSummaryDTO } from './dto/create-paper-ai-summary.dto';
 import { PapersService } from 'src/papers/papers.service';
 import { HaiPaperAiSummary } from './entities/hai-paper-ai-summaries.entity';
@@ -17,6 +17,7 @@ import OpenAI from 'openai';
 export class AiServicesService {
     private readonly openai: OpenAI;
     private readonly gptModel = 'gpt-5.4-mini'; // 기본 논문 AI 요약에 사용하는 모델
+    private readonly embeddingModel = 'text-embedding-3-large'; // 논문 임베딩 벡터 생성에 사용하는 모델
     private readonly defaultBatchSize = 20; // 배치 처리 시 한 번에 동시 처리할 논문 수
 
     constructor(
@@ -318,10 +319,8 @@ export class AiServicesService {
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // 3. 논문 제목+초록 임베딩 벡터
 
-    // 기본 논문 제목+초록 임베딩 벡터(아직은 단일 논문 기준 -> 추후에 배치 사이즈 만큼 논문 요약 코드로 수정 예정)
+    // 단일 논문 임베딩 벡터 생성(arxivId 기준)
     async generatePaperEmbedding(arxivId: string) {
-        const embeddingModel = 'text-embedding-3-large';
-
         const paper = await this.papersRepository.findOne({
             where: { arxivId },
             select: { arxivId: true, title: true, abstract: true, embedding: true },
@@ -335,21 +334,75 @@ export class AiServicesService {
             throw new ConflictException('해당 논문의 임베딩이 이미 존재합니다!');
         }
 
+        await this.embedAndSavePaper(paper);
+
+        return { success: true };
+    }
+
+    // 임베딩이 없는 모든 논문에 대해 배치 단위로 임베딩 생성
+    // - Promise.allSettled로 묶어서 한 건이 실패해도 나머지는 계속 진행
+    // - 배치 사이마다 짧게 대기하여 OpenAI rate limit 완화
+    async generateAllPaperEmbeddings(batchSize?: number) {
+        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
+
+        // embedding이 아직 없는 논문만 조회
+        const papers = await this.papersRepository.find({
+            where: { embedding: IsNull() },
+            select: { arxivId: true, title: true, abstract: true },
+        });
+
+        if (papers.length === 0) {
+            return { total: 0, success: 0, failed: 0, batchSize: size, failedArxivIds: [] };
+        }
+
+        let success = 0;
+        const failedArxivIds: string[] = [];
+
+        for (let i = 0; i < papers.length; i += size) {
+            const batch = papers.slice(i, i + size);
+
+            const results = await Promise.allSettled(
+                batch.map((paper) => this.embedAndSavePaper(paper)),
+            );
+
+            results.forEach((res, idx) => {
+                if (res.status === 'fulfilled') {
+                    success++;
+                } else {
+                    failedArxivIds.push(batch[idx].arxivId);
+                }
+            });
+
+            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
+            if (i + size < papers.length) {
+                await this.sleep(1000);
+            }
+        }
+
+        return {
+            total: papers.length,
+            success,
+            failed: failedArxivIds.length,
+            batchSize: size,
+            failedArxivIds,
+        };
+    }
+
+    // 논문 1건에 대해 임베딩 벡터를 생성하고 저장(존재 여부 검사는 호출부 책임)
+    private async embedAndSavePaper(paper: Pick<Paper, 'arxivId' | 'title' | 'abstract'>) {
         const input = `${paper.title}\n\n${paper.abstract}`;
 
         const response = await this.openai.embeddings.create({
-            model: embeddingModel,
+            model: this.embeddingModel,
             input,
         });
 
         const embedding = response.data[0].embedding; // 3072차원 벡터
 
         await this.papersRepository.update(
-            { arxivId },
+            { arxivId: paper.arxivId },
             { embedding: JSON.stringify(embedding) },
         );
-
-        return { success: true };
     }
 
     // 휴먼과 논문 제목+초록 임베딩 벡터(아직은 단일 논문 기준 -> 추후에 배치 사이즈 만큼 논문 요약 코드로 수정 예정)

@@ -171,17 +171,17 @@ export class PapersService {
   // 논문 starTier 일괄 계산 및 저장
   async assignStarTiers() {
     const fieldThresholds: Record<string, { star3: number; star2: number }> = {
-      'cs.AI':   { star3: 1000, star2: 150 },
-      'cs.LG':   { star3: 1000, star2: 150 },
-      'cs.CV':   { star3: 800,  star2: 120 },
-      'cs.CL':   { star3: 800,  star2: 120 },
-      'stat.ML': { star3: 500,  star2: 80  },
-      'cs.IR':   { star3: 300,  star2: 50  },
+      'cs.AI':   { star3: 500, star2: 100 },
+      'cs.LG':   { star3: 500, star2: 100 },
+      'cs.CV':   { star3: 500,  star2: 100 },
+      'cs.CL':   { star3: 500,  star2: 100 },
+      'stat.ML': { star3: 300,  star2: 80  },
+      'cs.IR':   { star3: 50,  star2: 20  },
       'cs.MM':   { star3: 100,  star2: 50  },
       'cs.SD':   { star3: 200,  star2: 40  },
       'cs.RO':   { star3: 60,  star2: 20  },
       'cs.SE':   { star3: 80,   star2: 15  },
-      'cs.HC':   { star3: 100,   star2: 10  },
+      'cs.HC':   { star3: 30,   star2: 10  },
     };
 
     const papers = await this.papersRepository.find({
