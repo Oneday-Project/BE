@@ -31,6 +31,20 @@ export class MajorCoursesService {
     return this.majorCourseRepository.find();
   }
 
+  async getCourseById(course_id: string) {
+    const course = await this.majorCourseRepository.findOne({
+      where: {
+        course_id,
+      }
+    });
+
+    if(!course){
+      throw new NotFoundException('존재하지 않는 전공과목 입니다!')
+    }
+
+    return course;
+  }
+
   async updateCourse(course_id: string, dto: UpdateMajorCourseDto) {
     const courseExists = await this.majorCourseRepository.exists({
       where: {

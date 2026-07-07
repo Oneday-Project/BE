@@ -73,12 +73,12 @@ export class AuthController {
     }
   }
 
-  @Patch('password')
-  @ApiOperation({ description: '비밀번호 변경 API' })
-  changePassword(
-      @User('id') id: number,
-      @Body() dto: ChangePasswordDto,
-  ) {
-      return this.authService.changePassword(id, dto);
-  }
+  // @Patch('password')
+  // @ApiOperation({ description: '비밀번호 변경 API' })
+  // changePassword(
+  //     @User('id') id: number,
+  //     @Body() dto: ChangePasswordDto,
+  // ) {
+  //     return this.authService.changePassword(id, dto);
+  // }
 }
