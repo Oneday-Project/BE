@@ -66,7 +66,7 @@ export class AuthService {
 
       // 만료될 때까지 얼마나 시간이 걸릴 건지(초(seconds) 단위)
       // refreshToken이나 accessToken이냐에 따라 만료기간을 다루게 둘 것임
-      expiresIn: isRefreshToken ? 3600 : 600,
+      expiresIn: isRefreshToken ? 3600 : 3600,
     })
   }
 
