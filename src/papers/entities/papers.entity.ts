@@ -61,6 +61,6 @@ export class Paper extends BaseModel {
     })
     starTier?: number;
 
-    @Column({ type: 'text', nullable: true })
-    embedding?: string;
+    @Column({ type: 'text', nullable: true, select: false })
+    embedding?: string; // 임베딩 벡터 — 기본 비선택(프론트 응답에서 제외), 필요 시 select로 명시 조회
 }
