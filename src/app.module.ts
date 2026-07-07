@@ -30,6 +30,7 @@ import { ResponseTimeInterceptor } from './common/interceptor/response-time.inte
 import { HaiPaperAiSummary } from './ai-services/entities/hai-paper-ai-summaries.entity';
 import { RoadmapModule } from './roadmap/roadmap.module';
 import { RoadmapTask } from './roadmap/entities/roadmap-task.entity';
+import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { RoadmapTask } from './roadmap/entities/roadmap-task.entity';
           PaperBookmark,
           HaiPaperAiSummary,
           RoadmapTask,
+          UserRoadmap,
         ],
         synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? false: true, 
         ssl: configService.get<string>(envVariableKeys.env) === 'prod'? { rejectUnauthorized: false } : false,

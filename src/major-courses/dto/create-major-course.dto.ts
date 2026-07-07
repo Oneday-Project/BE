@@ -5,15 +5,13 @@ export class CreateMajorCourseDto {
 
         professor?: string[]; // 교수명
 
-        fields!: string[]; // 분야(tag)
+        category!: string[]; // 분야(tag)
 
-        level!: string; // 전공선택 / 전공심화
+        level!: string; // 전선(전공선택) / 전심(전공심화)
 
         year_recommended!: number; // 권장 학년
 
         semester!: number; // 전공 과목 해당 학기
-
-        prereq_course_ids!: string[]; // 선수과목(선택)
 
         description!: string; // 과목 설명
 }
