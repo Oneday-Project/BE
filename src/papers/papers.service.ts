@@ -232,6 +232,7 @@ export class PapersService {
     return { success: true };
   }
 
+  // arxiv 논문 기준 유사 논문 추천(기본 논문 + 휴먼과 논문 통합)
   async getSimilarPapers(arxivId: string, limit: number = 5) {
       const paper = await this.papersRepository.findOne({
           where: { arxivId },
@@ -242,18 +243,38 @@ export class PapersService {
           throw new NotFoundException('해당 논문의 임베딩이 존재하지 않습니다.');
       }
 
-      const similarPapers = await this.papersRepository.query(
-        `SELECT p."arxivId", p.title, p.published_date, p."starTier",
-                1 - (p.embedding::vector <=> $1::vector) AS similarity
-        FROM paper p
-        WHERE p."arxivId" != $2
-          AND p.embedding IS NOT NULL
-        ORDER BY p.embedding::vector <=> $1::vector
-        LIMIT $3`,
-        [paper.embedding, arxivId, limit]
-      );
+      return this.findSimilarByEmbedding(paper.embedding, { arxivId }, limit);
+  }
 
-      return similarPapers;
+  // 주어진 임베딩 벡터로 기본 논문(paper) + 휴먼과 논문(hai_paper)을 통합 검색하여
+  // 유사도 내림차순으로 섞인 단일 목록을 반환한다.
+  // - exclude.arxivId / exclude.haiId: 기준이 된 논문 자신을 결과에서 제외
+  async findSimilarByEmbedding(
+      embedding: string,
+      exclude: { arxivId?: string; haiId?: number },
+      limit: number = 5,
+  ) {
+      const excludeArxivId = exclude.arxivId ?? null;
+      const excludeHaiId = exclude.haiId ?? null;
+
+      return this.papersRepository.query(
+        `SELECT * FROM (
+            SELECT 'arxiv' AS type, p."arxivId" AS id, p.title, p.pdf_url AS "pdfUrl",
+                   1 - (p.embedding::vector <=> $1::vector) AS similarity
+            FROM paper p
+            WHERE p.embedding IS NOT NULL
+              AND ($2::text IS NULL OR p."arxivId" != $2)
+            UNION ALL
+            SELECT 'hai' AS type, h.id::text AS id, h.title, h.pdf_url AS "pdfUrl",
+                   1 - (h.embedding::vector <=> $1::vector) AS similarity
+            FROM hai_paper h
+            WHERE h.embedding IS NOT NULL
+              AND ($3::int IS NULL OR h.id != $3)
+        ) AS combined
+        ORDER BY similarity DESC
+        LIMIT $4`,
+        [embedding, excludeArxivId, excludeHaiId, limit]
+      );
   }
 
 

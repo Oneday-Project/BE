@@ -228,7 +228,7 @@ export class RoadmapService {
         >();
 
         for (const course of courses) {
-            const recommended = (course.category ?? []).some((c) =>
+            const recommended = (course.fields ?? []).some((c) =>
                 interestSet.has(c),
             );
             const item = this.toCourseItem(course, recommended);
@@ -264,7 +264,7 @@ export class RoadmapService {
             courseId: course.course_id,
             name: course.name, // 박스에 표시할 과목명
             description: course.description, // 과목명 hover 시 보여줄 설명
-            category: course.category,
+            category: course.fields,
             level: course.level,
             recommended, // 관심 분야와 겹치면 강조(파란 박스)
         };

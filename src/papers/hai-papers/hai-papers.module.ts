@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { HaiPapersService } from './hai-papers.service';
 import { HaiPapersController } from './hai-papers.controller';
 import { HaiPaper } from '../entities/hai-papers.entity';
+import { PapersModule } from '../papers.module';
 
 
 @Module({
@@ -11,7 +12,9 @@ import { HaiPaper } from '../entities/hai-papers.entity';
       [
         HaiPaper,
       ]
-  )],
+  ),
+    PapersModule,
+  ],
   controllers: [HaiPapersController],
   providers: [HaiPapersService],
   exports: [HaiPapersService],
