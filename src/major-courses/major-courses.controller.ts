@@ -21,6 +21,14 @@ export class MajorCoursesController {
     return this.majorCoursesService.getAllCourses();
   }
 
+  @Get(':courseId')
+  @ApiOperation({
+    description: 'courseId(과목 코드) 기반 전공과목 하나를 가져오는 API',
+  })
+  getCourseById(@Param('courseId') courseId: string) {
+    return this.majorCoursesService.getCourseById(courseId);
+  }
+
   @Post()
   @Roles(RolesEnum.ADMIN)
   @ApiOperation({

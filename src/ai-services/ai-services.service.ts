@@ -5,7 +5,6 @@ import { IsNull, Repository } from 'typeorm';
 import { CreatePaperAiSummaryDTO } from './dto/create-paper-ai-summary.dto';
 import { PapersService } from 'src/papers/papers.service';
 import { HaiPaperAiSummary } from './entities/hai-paper-ai-summaries.entity';
-import { CreateHaiPaperAiSummaryDTO } from './dto/create-hai-paper-ai-summary.dto';
 import { HaiPapersService } from 'src/papers/hai-papers/hai-papers.service';
 import { ConfigService } from '@nestjs/config';
 import { envVariableKeys } from 'src/common/const/env.const';
@@ -292,12 +291,12 @@ export class AiServicesService {
         return haiPaperAiSummary;
     }
 
-    // ai모델 사용 전에 테스트를 위해 직접 데이터를 생성하는 코드(직접 데이터 생성. 나중에 지울 예정)
-    async createHaiPaperAiSummary(id: number, dto: CreateHaiPaperAiSummaryDTO){
+    // 단일 휴먼과 논문 AI 요약 생성(id 기준)
+    async createHaiPaperAiSummary(id: number){
         const existingHaiPaperAiSummary = await this.haiPaperAiSummaryRepository.exists({
             where: {
-                haiPaper: { 
-                    id, 
+                haiPaper: {
+                    id,
                 },
             },
         });
@@ -308,12 +307,68 @@ export class AiServicesService {
 
         const haiPaper = await this.haiPapersService.getHaiPaperById(id);
 
+        const result = await this.requestHaiPaperAiSummary(haiPaper, new Date().getFullYear());
+
         const haiPaperAiSummary = this.haiPaperAiSummaryRepository.create({
-            ...dto, 
+            abstractKor: result.abstractKor,
+            what: result.what,
+            how: result.how,
+            impact: result.impact,
+            model: this.gptModel,
             haiPaper,
         })
 
         return this.haiPaperAiSummaryRepository.save(haiPaperAiSummary);
+    }
+
+    // GPT를 호출해 휴먼과 논문 요약 JSON을 받아 파싱하여 반환
+    private async requestHaiPaperAiSummary(haiPaper: HaiPaper, currentYear: number) {
+        const systemPrompt = `
+            You are an AI that summarizes academic papers in Korean.
+
+            Return a JSON object with exactly these fields:
+
+            - abstractKor: 논문 초록을 한국어로 자연스럽고 읽기 쉽게 번역한다.
+                직역보다는 의미 전달을 우선한다.
+                한국 논문 초록 스타일을 따른다.
+                영어 문장 구조를 그대로 옮긴 번역체 표현은 피한다.
+                모델명, 데이터셋명, 알고리즘명, 고유 개념명은 유지한다.
+                의미 전달에 불필요한 직역 표현은 자연스러운 한국어 표현으로 바꾼다.
+
+            - what: 이 논문이 해결하려는 핵심 문제, 기존 연구의 한계, 그리고 이 논문의 연구 목표를 구체적으로 작성한다.
+                반드시 180~200자 사이로 작성한다.
+
+            - how: 제안한 모델, 알고리즘, 데이터셋, 실험 설계 등 핵심 방법론을 구체적으로 작성한다.
+                반드시 180~200자 사이로 작성한다.
+
+            - impact: user message의 currentYear와 publishedYear를 비교하여 아래 기준에 따라 작성한다.
+                - publishedYear가 currentYear 기준 2년 이내인 경우:
+                    논문의 실험 결과와 수치, 그리고 향후 연구에 어떤 영향을 미칠 수 있는지 가능성 중심으로 작성한다.
+                - publishedYear가 currentYear 기준 2년 초과인 경우:
+                    실험 결과 수치나 성과, 그리고 이 연구가 해당 분야의 후속 연구에 미친 실제 영향을 구체적으로 작성한다.
+                반드시 180~200자 사이로 작성한다.
+        `;
+
+        const userPrompt =
+            `currentYear: ${currentYear}
+                title: ${haiPaper.title}
+                abstract: ${haiPaper.abstract}
+                publishedYear: ${haiPaper.publishedYear}`;
+
+        const response = await this.openai.chat.completions.create({
+            model: this.gptModel,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+            ],
+            response_format: { type: 'json_object' },
+        });
+
+        try {
+            return JSON.parse(response.choices[0].message.content!);
+        } catch (e) {
+            throw new InternalServerErrorException('AI 응답 파싱에 실패했습니다.');
+        }
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -405,10 +460,8 @@ export class AiServicesService {
         );
     }
 
-    // 휴먼과 논문 제목+초록 임베딩 벡터(아직은 단일 논문 기준 -> 추후에 배치 사이즈 만큼 논문 요약 코드로 수정 예정)
+    // 단일 휴먼과 논문 임베딩 벡터 생성(id 기준)
     async generateHaiPaperEmbedding(id: number) {
-        const embeddingModel = 'text-embedding-3-large';
-
         const haiPaper = await this.haiPapersRepository.findOne({
             where: { id },
             select: { id: true, title: true, abstract: true, embedding: true },
@@ -422,21 +475,26 @@ export class AiServicesService {
             throw new ConflictException('해당 논문의 임베딩이 이미 존재합니다!');
         }
 
+        await this.embedAndSaveHaiPaper(haiPaper);
+
+        return { success: true };
+    }
+
+    // 휴먼과 논문 1건에 대해 임베딩 벡터를 생성하고 저장(존재 여부 검사는 호출부 책임)
+    private async embedAndSaveHaiPaper(haiPaper: Pick<HaiPaper, 'id' | 'title' | 'abstract'>) {
         const input = `${haiPaper.title}\n\n${haiPaper.abstract}`;
 
         const response = await this.openai.embeddings.create({
-            model: embeddingModel,
+            model: this.embeddingModel,
             input,
         });
 
         const embedding = response.data[0].embedding; // 3072차원 벡터
 
         await this.haiPapersRepository.update(
-            { id },
+            { id: haiPaper.id },
             { embedding: JSON.stringify(embedding) },
         );
-
-        return { success: true };
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
