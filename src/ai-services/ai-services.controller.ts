@@ -113,5 +113,5 @@ export class AiServicesController {
       return this.aiServicesService.generateHaiPaperEmbedding(id);
   }
 
-
+  
 }
