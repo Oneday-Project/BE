@@ -22,5 +22,6 @@ import { Paper } from 'src/papers/entities/papers.entity';
   ],
   controllers: [AiServicesController],
   providers: [AiServicesService],
+  exports: [AiServicesService],
 })
 export class AiServicesModule {}

@@ -442,6 +442,97 @@ export class AiServicesService {
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // 4. 로드맵 AI
 
+    // 종합 코멘트 생성에 필요한 입력값 (roadmap 모듈에서 계산해 전달)
+    // 의존성 방향을 위해 roadmap 타입을 import 하지 않고 원시값으로만 받는다.
+    private buildFallbackRoadmapComment(params: RoadmapCommentParams): string {
+        const strength = params.strengths[0] ?? '기본기';
+        const axes = [
+            { label: '이해도', value: params.radar.interest },
+            { label: '경험', value: params.radar.experience },
+            { label: '논문 읽기 루틴', value: params.radar.paper },
+            { label: '포트폴리오', value: params.radar.preparation },
+            { label: '성적', value: params.radar.academic },
+        ];
+        const weakest = axes.reduce((a, b) => (b.value < a.value ? b : a));
+        return (
+            `현재 준비도는 ${params.totalScore}점이에요.\n` +
+            `강점은 ${strength}이고, 다음 단계로는 ${weakest.label} 보완을 먼저 하면 좋아요.`
+        );
+    }
 
+    // 설문 분석 결과를 바탕으로 결과 페이지의 '종합 코멘트' 문구를 GPT로 생성한다.
+    // 논문 요약과 동일한 OpenAI 클라이언트/모델/JSON 응답 방식을 사용한다.
+    async generateRoadmapComment(params: RoadmapCommentParams): Promise<string> {
+        const gptModel = 'gpt-5.4-mini';
+        const fallback = this.buildFallbackRoadmapComment(params);
 
+        const systemPrompt = `
+            너는 대학원 진학을 준비하는 학생의 로드맵 결과를 요약해 주는 한국어 멘토다.
+
+            반드시 아래 필드 하나만 가진 JSON 객체를 반환한다.
+            - comment: 아래 형식과 조건을 모두 지킨 한국어 코멘트 문자열
+
+            형식 (줄바꿈은 \\n 으로 표현):
+            1) 첫 줄은 정확히 "현재 준비도는 {score}점이에요." 로 작성한다.
+               점수는 user message의 score 값을 그대로 사용하고 임의로 바꾸지 않는다.
+            2) 둘째 줄부터는 "강점은 ~이고, 다음 단계로는 ~를 먼저 보완하면 좋아요." 형식으로 작성한다.
+               - 강점은 user message의 strengths 중 가장 핵심 1가지를 자연스럽게 요약한다.
+               - 다음 단계는 radar 점수 중 가장 낮은 영역을 우선 보완 대상으로 잡아 구체적으로 제안한다.
+                 (예: 논문 루틴이 낮으면 "논문 읽기 루틴(월 4~6편 목표)")
+
+            조건:
+            - 전체 3~4줄, 공백 포함 100자 내외로 간결하게 작성한다.
+            - 격려하는 따뜻한 톤. 과장 표현과 이모지는 쓰지 않는다.
+            - 한국어 조사(을/를, 이고/고 등)를 문맥에 맞게 자연스럽게 맞춘다.
+        `;
+
+        const userPrompt = `
+            score: ${params.totalScore}
+            stage: ${params.stage}
+            interestFields: ${params.interestFields.join(', ')}
+            strengths: ${params.strengths.join(', ') || '없음'}
+            weaknesses: ${params.weaknesses.join(', ') || '없음'}
+            radar(각 0~10):
+              이해도: ${params.radar.interest}
+              경험: ${params.radar.experience}
+              논문 루틴: ${params.radar.paper}
+              포트폴리오: ${params.radar.preparation}
+              성적: ${params.radar.academic}
+        `;
+
+        try {
+            const response = await this.openai.chat.completions.create({
+                model: gptModel,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                response_format: { type: 'json_object' },
+            });
+
+            const result = JSON.parse(response.choices[0].message.content!);
+            const comment =
+                typeof result.comment === 'string' ? result.comment.trim() : '';
+            return comment || fallback;
+        } catch (e) {
+            // GPT 호출/파싱 실패 시에도 로드맵 생성은 계속되도록 fallback 코멘트 사용
+            return fallback;
+        }
+    }
+}
+
+// 로드맵 종합 코멘트 생성 입력값
+export interface RoadmapCommentParams {
+    totalScore: number;
+    stage: string;
+    interestFields: string[];
+    strengths: string[];
+    weaknesses: string[];
+    radar: {
+        interest: number;
+        experience: number;
+        paper: number;
+        preparation: number;
+        academic: number;
+    };
 }

@@ -27,7 +27,7 @@ const INTEREST_FIELDS = [
 ] as const;
 
 // Q9 대외 활동 - 준비된 항목 (복수 선택)
-export const Q9_NONE = '없음';
+export const Q9_NONE = '아직 아무 것도 없어요';
 export const Q9_OPTIONS = [
     Q9_NONE,
     'GitHub 포트폴리오',
@@ -150,7 +150,7 @@ export class AnalyzeRoadmapDto {
 
     @ApiProperty({
         description:
-            "Q10 발표 경험 (복수 선택, 항목당 2.5점·최대 10점, '없음' 선택 시 0점)",
+            "Q10 기술 또는 연구 관련 발표 경험이 있나요? (복수 선택, 항목당 2.5점·최대 10점, '없음' 선택 시 0점)",
         example: ['수업 프로젝트 발표', '학회 발표'],
         isArray: true,
         enum: Q10_OPTIONS,
