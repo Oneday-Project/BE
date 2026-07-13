@@ -21,6 +21,9 @@ import {
 import { AiServicesService } from 'src/ai-services/ai-services.service';
 import { MajorCourse } from 'src/major-courses/entities/major-course.entity';
 
+// 기초 전공과목 태그. 관심 분야와 무관하게 항상 추천(강조) 처리한다.
+const MAJOR_BASIC_TAG = '기초';
+
 @Injectable()
 export class RoadmapService {
     constructor(
@@ -228,9 +231,11 @@ export class RoadmapService {
         >();
 
         for (const course of courses) {
-            const recommended = (course.fields ?? []).some((c) =>
-                interestSet.has(c),
-            );
+            // '기초' 과목은 항상 강조. 그 외에는 관심 분야와 겹치면 강조.
+            const courseFields = course.fields ?? [];
+            const recommended =
+                courseFields.includes(MAJOR_BASIC_TAG) ||
+                courseFields.some((c) => interestSet.has(c));
             const item = this.toCourseItem(course, recommended);
 
             if (!yearMap.has(course.year_recommended)) {
@@ -264,7 +269,7 @@ export class RoadmapService {
             courseId: course.course_id,
             name: course.name, // 박스에 표시할 과목명
             description: course.description, // 과목명 hover 시 보여줄 설명
-            category: course.fields,
+            fields: course.fields,
             level: course.level,
             recommended, // 관심 분야와 겹치면 강조(파란 박스)
         };
