@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { HaiPapersService } from './hai-papers.service';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
 import { UpdatHAIpaperDto } from './dto/update-hai-paper.dto';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { Roles } from 'src/auth/decorator/roles.decorator';
+import { IsPublic } from 'src/common/decorator/is-public.decorator';
 
 @Controller('papers/hai-papers')
 @ApiBearerAuth()
@@ -21,10 +22,22 @@ export class HaiPapersController {
 
   @Get(':id')
   @ApiOperation({
-    description: 'id 기반 단일 휴먼과 논문 가져오는 API', 
+    description: 'id 기반 단일 휴먼과 논문 가져오는 API',
   })
   getPaper(@Param('id', ParseIntPipe) id: number) {
     return this.haiPapersService.getHaiPaperById(id);
+  }
+
+  @Get(':id/similar')
+  @IsPublic()
+  @ApiOperation({
+    description: 'HAI 논문 기준 유사 논문 추천 API(기본 논문 + HAI 논문 통합)',
+  })
+  getSimilarHaiPapers(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+    return this.haiPapersService.getSimilarHaiPapers(id, limit);
   }
 
   @Post()
