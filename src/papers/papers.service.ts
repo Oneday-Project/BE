@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Paper } from './entities/papers.entity';
 import { In, LessThan, QueryRunner, Repository } from 'typeorm';
@@ -7,8 +12,15 @@ import { CommonService } from 'src/common/common.service';
 import { Author } from './entities/authors.entity';
 import { UsersService } from 'src/users/users.service';
 import { PaperBookmark } from './entities/paper-bookmarks.entity';
-import { PaperReadingStatus, ReadingStatusEnum } from './entities/paper-reading-status.entity';
+import {
+  PaperReadingStatus,
+  ReadingStatusEnum,
+} from './entities/paper-reading-status.entity';
 import { ReadingActivityLog } from './entities/reading-activity-log.entity';
+import { HaiPaper } from './entities/hai-papers.entity';
+import { HaiPaperBookmark } from './entities/hai-paper-bookmarks.entity';
+import { HaiPaperReadingStatus } from './entities/hai-paper-reading-status.entity';
+import { HaiPaperActivityLog } from './entities/hai-paper-activity-log.entity';
 import { GetAuthorsPaginationDto } from './dto/get-authors-pagination.dto';
 import { GetReadingCalendarDto } from './dto/get-reading-calendar.dto';
 
@@ -28,39 +40,51 @@ export class PapersService {
     private readonly paperReadingStatusRepository: Repository<PaperReadingStatus>,
     @InjectRepository(ReadingActivityLog)
     private readonly readingActivityLogRepository: Repository<ReadingActivityLog>,
+    @InjectRepository(HaiPaper)
+    private readonly haiPapersRepository: Repository<HaiPaper>,
+    @InjectRepository(HaiPaperBookmark)
+    private readonly haiPaperBookmarkRepository: Repository<HaiPaperBookmark>,
+    @InjectRepository(HaiPaperReadingStatus)
+    private readonly haiPaperReadingStatusRepository: Repository<HaiPaperReadingStatus>,
+    @InjectRepository(HaiPaperActivityLog)
+    private readonly haiPaperActivityLogRepository: Repository<HaiPaperActivityLog>,
     private readonly usersService: UsersService,
     private readonly commonService: CommonService,
-  ){}
+  ) {}
 
   // 조건에 해당되는 모든 논문 가져오기(페이지네이션 적용)
   async getAllPapers(dto: GetPapersPaginationDto) {
-
     const { keyword, tags, yearRange, startDate, endDate } = dto;
 
-    const qb = this.papersRepository.createQueryBuilder('paper')
+    const qb = this.papersRepository
+      .createQueryBuilder('paper')
       .leftJoinAndSelect('paper.authors', 'author')
-      .leftJoinAndSelect('paper.researchFields', 'researchField')
+      .leftJoinAndSelect('paper.researchFields', 'researchField');
 
     // 분야로 검색하는 기능
     if (tags && tags.length > 0) {
-      const tagSubQb = this.papersRepository.createQueryBuilder('paper')
+      const tagSubQb = this.papersRepository
+        .createQueryBuilder('paper')
         .select('paper."arxivId"')
         .leftJoin('paper.researchFields', 'researchField')
         .where('researchField.name IN (:...tags)', { tags })
         .distinct(true);
-  
+
       // getQuery() - QueryBuilder를 "SQL문(문자열)"으로 바꿔주는 함수
       // :keyword, :...tags 와 같은 파라미터는 포함되지 않으므로(쿼리만 가져오고 값은 안 가져옴)
       // .setParameters() 사용 - SQL에 들어갈 변수 값들을 세팅하는 함수
       // qb.getParameters() - 메인 QueryBuilder에 이미 들어있는 파라미터들 가져오기({ year: 2024 })
       // tagSubQb.getParameters() - 서브쿼리에서 사용한 파라미터 가져오기({ tags: ['AI', 'ML'] })
-      qb.andWhere(`paper."arxivId" IN (${tagSubQb.getQuery()})`)
-        .setParameters({ ...qb.getParameters(), ...tagSubQb.getParameters() });
+      qb.andWhere(`paper."arxivId" IN (${tagSubQb.getQuery()})`).setParameters({
+        ...qb.getParameters(),
+        ...tagSubQb.getParameters(),
+      });
     }
 
     // 검색창 기능(검색창에 특정 단어를 검색하면 논문 제목, 초록, 저자에서 찾아서 논문 검색)
     if (keyword) {
-      const keywordSubQb = this.papersRepository.createQueryBuilder('paper')
+      const keywordSubQb = this.papersRepository
+        .createQueryBuilder('paper')
         .select('paper."arxivId"')
         .leftJoin('paper.authors', 'author')
         .where(
@@ -69,25 +93,32 @@ export class PapersService {
         )
         .distinct(true);
 
-      qb.andWhere(`paper."arxivId" IN (${keywordSubQb.getQuery()})`)
-        .setParameters({ ...qb.getParameters(), ...keywordSubQb.getParameters() });
+      qb.andWhere(
+        `paper."arxivId" IN (${keywordSubQb.getQuery()})`,
+      ).setParameters({
+        ...qb.getParameters(),
+        ...keywordSubQb.getParameters(),
+      });
     }
 
     // 최근 몇년으로 검색하는 기능
-    if (yearRange) { // yearRange = 3
+    if (yearRange) {
+      // yearRange = 3
       const currentYear = new Date(); // ex. 2026.05.01
       currentYear.setFullYear(currentYear.getFullYear() - yearRange); // ex. 2023
       const startYear = currentYear.toISOString().split('T')[0]; // "2023.05.01T00:00:00.000Z" -> "2023-05-01"
       qb.andWhere('paper.publishedDate >= :start', { start: startYear });
-    }else{
+    } else {
       // 직접 기간 설정
       if (startDate) {
         qb.andWhere('paper.publishedDate >= :startDate', { startDate });
 
-        const effectiveEndDate = endDate ?? new Date().toISOString().split('T')[0];
+        const effectiveEndDate =
+          endDate ?? new Date().toISOString().split('T')[0];
 
-        qb.andWhere('paper.publishedDate <= :endDate', {endDate: effectiveEndDate});
-
+        qb.andWhere('paper.publishedDate <= :endDate', {
+          endDate: effectiveEndDate,
+        });
       } else if (endDate) {
         qb.andWhere('paper.publishedDate <= :endDate', { endDate });
       }
@@ -98,13 +129,12 @@ export class PapersService {
 
     // // 페이지 기반 페이지네이션
     // return this.commonService.pagePagination(qb, dto);
-
   }
 
   // arxivId 기반 단일 논문 GET
   // userId가 주어지면(로그인한 유저의 API 호출) 해당 유저 기준 읽기 상태를 함께 반환한다.
   // 배치/관리자 로직 등 유저 컨텍스트가 없는 내부 호출에서는 userId 없이 논문 정보만 조회한다.
-  async getPaperByArxivId(arxivId: string, userId?: number){
+  async getPaperByArxivId(arxivId: string, userId?: number) {
     const paper = await this.papersRepository.findOne({
       where: {
         arxivId,
@@ -113,10 +143,10 @@ export class PapersService {
         authors: true,
         researchFields: true,
         aiSummary: true,
-      }
-    })
+      },
+    });
 
-    if(!paper){
+    if (!paper) {
       throw new NotFoundException('존재하지 않는 논문입니다!');
     }
 
@@ -129,70 +159,78 @@ export class PapersService {
     return { ...paper, readingStatus };
   }
 
-
   // 모든 저자 GET
-  async getAllAuthors(dto:GetAuthorsPaginationDto){
-    
-    const qb = this.authorsRepository.createQueryBuilder('author')
+  async getAllAuthors(dto: GetAuthorsPaginationDto) {
+    const qb = this.authorsRepository.createQueryBuilder('author');
 
     return this.commonService.cursorPagination(qb, dto);
   }
 
   // 북마크 기능
-  async togglePaperBookmark(arxivId: string, userId: number, qr: QueryRunner){
+  async togglePaperBookmark(arxivId: string, userId: number, qr: QueryRunner) {
     const papersRepository = qr.manager.getRepository<Paper>(Paper);
-    const paperbookmarksRepository = qr.manager.getRepository<PaperBookmark>(PaperBookmark);
-
+    const paperbookmarksRepository =
+      qr.manager.getRepository<PaperBookmark>(PaperBookmark);
 
     const paper = await papersRepository.findOne({
       where: {
         arxivId,
-      }
+      },
     });
 
-    if(!paper){
+    if (!paper) {
       throw new NotFoundException('존재하지 않는 논문입니다!');
     }
 
-    const user = await this.usersService.findUserById(userId)
+    const user = await this.usersService.findUserById(userId);
 
     const bookmarkRecord = await paperbookmarksRepository.findOne({
       where: { paper: { arxivId }, user: { id: userId } },
     });
 
     // 테스크 스케줄링도 적용 예정
-    if(bookmarkRecord){ // bookmark였는데 그냥 bookmark버튼 눌러서 북마크 취소
-        await paperbookmarksRepository.delete({
-          paper: { arxivId },
-          user: { id: userId },
-        });
+    if (bookmarkRecord) {
+      // bookmark였는데 그냥 bookmark버튼 눌러서 북마크 취소
+      await paperbookmarksRepository.delete({
+        paper: { arxivId },
+        user: { id: userId },
+      });
 
-        await papersRepository.decrement({
-            arxivId, 
-          }, 'bookmarkCount', 1);
+      await papersRepository.decrement(
+        {
+          arxivId,
+        },
+        'bookmarkCount',
+        1,
+      );
 
-        return { isBookmark: false };
-
-    }else{ // bookmark아니었는데 bookmark 버튼 눌러서 북마크 표시
+      return { isBookmark: false };
+    } else {
+      // bookmark아니었는데 bookmark 버튼 눌러서 북마크 표시
       await paperbookmarksRepository.save({
         paper,
-        user, 
-      })
+        user,
+      });
 
-      await papersRepository.increment({ 
-        arxivId, 
-      }, 'bookmarkCount', 1);
+      await papersRepository.increment(
+        {
+          arxivId,
+        },
+        'bookmarkCount',
+        1,
+      );
 
       return { isBookmark: true };
     }
-
   }
 
   // 읽는 중 상태 토글(시작/취소)
   async toggleReadingStatus(arxivId: string, userId: number, qr: QueryRunner) {
     const papersRepository = qr.manager.getRepository<Paper>(Paper);
-    const paperReadingStatusRepository = qr.manager.getRepository<PaperReadingStatus>(PaperReadingStatus);
-    const readingActivityLogRepository = qr.manager.getRepository<ReadingActivityLog>(ReadingActivityLog);
+    const paperReadingStatusRepository =
+      qr.manager.getRepository<PaperReadingStatus>(PaperReadingStatus);
+    const readingActivityLogRepository =
+      qr.manager.getRepository<ReadingActivityLog>(ReadingActivityLog);
 
     const paper = await papersRepository.findOne({ where: { arxivId } });
     if (!paper) {
@@ -204,7 +242,11 @@ export class PapersService {
     });
 
     // 30일 지난 '읽는 중' 상태는 이미 안읽음으로 취급 -> row를 지우고 없던 것처럼 처리(취소가 아니라 새로 시작하게)
-    if (existing && existing.status === ReadingStatusEnum.READING && this.isExpiredReading(existing)) {
+    if (
+      existing &&
+      existing.status === ReadingStatusEnum.READING &&
+      this.isExpiredReading(existing)
+    ) {
       await paperReadingStatusRepository.delete({ paperId: arxivId, userId });
       existing = null;
     }
@@ -247,15 +289,19 @@ export class PapersService {
 
   // 읽기 완료로 전환
   async completeReading(arxivId: string, userId: number, qr: QueryRunner) {
-    const paperReadingStatusRepository = qr.manager.getRepository<PaperReadingStatus>(PaperReadingStatus);
-    const readingActivityLogRepository = qr.manager.getRepository<ReadingActivityLog>(ReadingActivityLog);
+    const paperReadingStatusRepository =
+      qr.manager.getRepository<PaperReadingStatus>(PaperReadingStatus);
+    const readingActivityLogRepository =
+      qr.manager.getRepository<ReadingActivityLog>(ReadingActivityLog);
 
     const existing = await paperReadingStatusRepository.findOne({
       where: { paperId: arxivId, userId },
     });
 
     if (!existing) {
-      throw new NotFoundException('읽는 중인 논문이 아닙니다. 먼저 읽는 중으로 표시해주세요.');
+      throw new NotFoundException(
+        '읽는 중인 논문이 아닙니다. 먼저 읽는 중으로 표시해주세요.',
+      );
     }
 
     if (existing.status === ReadingStatusEnum.COMPLETED) {
@@ -265,7 +311,9 @@ export class PapersService {
     // 30일 지난 '읽는 중' 상태는 이미 안읽음으로 취급 -> 완료 처리 대신 만료 정리 후 동일한 에러
     if (this.isExpiredReading(existing)) {
       await paperReadingStatusRepository.delete({ paperId: arxivId, userId });
-      throw new NotFoundException('읽는 중인 논문이 아닙니다. 먼저 읽는 중으로 표시해주세요.');
+      throw new NotFoundException(
+        '읽는 중인 논문이 아닙니다. 먼저 읽는 중으로 표시해주세요.',
+      );
     }
 
     existing.status = ReadingStatusEnum.COMPLETED;
@@ -294,7 +342,10 @@ export class PapersService {
 
     if (status.status === ReadingStatusEnum.READING) {
       if (this.isExpiredReading(status)) {
-        await this.paperReadingStatusRepository.delete({ paperId: arxivId, userId });
+        await this.paperReadingStatusRepository.delete({
+          paperId: arxivId,
+          userId,
+        });
         return 'unread';
       }
 
@@ -309,13 +360,19 @@ export class PapersService {
     return Date.now() - status.startedAt.getTime() > this.READING_EXPIRY_MS;
   }
 
-  // 이 유저의 '읽는 중' 상태 중 30일 지난 것들을 한꺼번에 정리(만료 처리)
+  // 이 유저의 '읽는 중' 상태 중 30일 지난 것들을 한꺼번에 정리(만료 처리) — arxiv 논문 + HAI 논문 둘 다
   // 캘린더/이어서읽기처럼 여러 논문을 한꺼번에 집계하는 API 진입 시점에 호출해서,
   // 개별 논문 상세조회를 안 거쳐도 집계 결과에 만료된 항목이 남아있지 않게 한다.
   private async expireStaleReadingStatuses(userId: number): Promise<void> {
     const expiryThreshold = new Date(Date.now() - this.READING_EXPIRY_MS);
 
     await this.paperReadingStatusRepository.delete({
+      userId,
+      status: ReadingStatusEnum.READING,
+      startedAt: LessThan(expiryThreshold),
+    });
+
+    await this.haiPaperReadingStatusRepository.delete({
       userId,
       status: ReadingStatusEnum.READING,
       startedAt: LessThan(expiryThreshold),
@@ -331,11 +388,15 @@ export class PapersService {
     });
 
     if (!exists) {
-      await this.readingActivityLogRepository.save({ paperId: arxivId, userId, date });
+      await this.readingActivityLogRepository.save({
+        paperId: arxivId,
+        userId,
+        date,
+      });
     }
   }
 
-  // 월간 캘린더/요약/연속기록 조회
+  // 월간 캘린더/요약/연속기록 조회 (arxiv 논문 + HAI 논문 통합)
   async getReadingCalendar(userId: number, dto: GetReadingCalendarDto) {
     await this.expireStaleReadingStatuses(userId); // 집계 전에 30일 지난 읽는 중 상태부터 정리
 
@@ -346,27 +407,73 @@ export class PapersService {
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
 
-    // 연한 파랑: 활동 로그가 있는 날짜들
-    const activityRows = await this.readingActivityLogRepository
-      .createQueryBuilder('log')
-      .select("DISTINCT TO_CHAR(log.date, 'YYYY-MM-DD')", 'date')
-      .where('log.userId = :userId', { userId })
-      .andWhere('log.date BETWEEN :startDate AND :endDate', { startDate, endDate })
-      .getRawMany<{ date: string }>();
+    // 연한 파랑: 활동 로그가 있는 날짜들 (두 소스를 합침)
+    const [paperActivityRows, haiActivityRows] = await Promise.all([
+      this.readingActivityLogRepository
+        .createQueryBuilder('log')
+        .select("DISTINCT TO_CHAR(log.date, 'YYYY-MM-DD')", 'date')
+        .where('log.userId = :userId', { userId })
+        .andWhere('log.date BETWEEN :startDate AND :endDate', {
+          startDate,
+          endDate,
+        })
+        .getRawMany<{ date: string }>(),
+      this.haiPaperActivityLogRepository
+        .createQueryBuilder('log')
+        .select("DISTINCT TO_CHAR(log.date, 'YYYY-MM-DD')", 'date')
+        .where('log.userId = :userId', { userId })
+        .andWhere('log.date BETWEEN :startDate AND :endDate', {
+          startDate,
+          endDate,
+        })
+        .getRawMany<{ date: string }>(),
+    ]);
 
-    // 진한 파랑: 완료된 날짜들 (completed_at은 timestamptz이므로 한국시간(KST)으로 변환 후 날짜만 비교)
-    const completedRows = await this.paperReadingStatusRepository
-      .createQueryBuilder('status')
-      .select("DISTINCT TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')", 'date')
-      .where('status.userId = :userId', { userId })
-      .andWhere('status.completed_at IS NOT NULL')
-      .andWhere("TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') BETWEEN :startDate AND :endDate", { startDate, endDate })
-      .getRawMany<{ date: string }>();
+    const activityDateSet = new Set([
+      ...paperActivityRows.map((r) => r.date),
+      ...haiActivityRows.map((r) => r.date),
+    ]);
 
-    const completedDateSet = new Set(completedRows.map((r) => r.date));
-    const days: { date: string; status: 'reading' | 'completed' }[] = activityRows.map((r) => ({
-      date: r.date,
-      status: completedDateSet.has(r.date) ? 'completed' : 'reading',
+    // 진한 파랑: 완료된 날짜들 (completed_at은 timestamptz이므로 한국시간(KST)으로 변환 후 날짜만 비교, 두 소스를 합침)
+    const [paperCompletedRows, haiCompletedRows] = await Promise.all([
+      this.paperReadingStatusRepository
+        .createQueryBuilder('status')
+        .select(
+          "DISTINCT TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')",
+          'date',
+        )
+        .where('status.userId = :userId', { userId })
+        .andWhere('status.completed_at IS NOT NULL')
+        .andWhere(
+          "TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') BETWEEN :startDate AND :endDate",
+          { startDate, endDate },
+        )
+        .getRawMany<{ date: string }>(),
+      this.haiPaperReadingStatusRepository
+        .createQueryBuilder('status')
+        .select(
+          "DISTINCT TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')",
+          'date',
+        )
+        .where('status.userId = :userId', { userId })
+        .andWhere('status.completed_at IS NOT NULL')
+        .andWhere(
+          "TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') BETWEEN :startDate AND :endDate",
+          { startDate, endDate },
+        )
+        .getRawMany<{ date: string }>(),
+    ]);
+
+    const completedDateSet = new Set([
+      ...paperCompletedRows.map((r) => r.date),
+      ...haiCompletedRows.map((r) => r.date),
+    ]);
+
+    const days: { date: string; status: 'reading' | 'completed' }[] = [
+      ...activityDateSet,
+    ].map((date) => ({
+      date,
+      status: completedDateSet.has(date) ? 'completed' : 'reading',
     }));
 
     for (const date of completedDateSet) {
@@ -375,34 +482,66 @@ export class PapersService {
       }
     }
 
-    // "이번 달에 시작한 개수"가 아니라 "지금 이 순간 읽는 중(완료 안 된) 상태인 개수" — 월과 무관하게 실시간 값
-    const readingCount = await this.paperReadingStatusRepository.count({
-      where: { userId, status: ReadingStatusEnum.READING },
-    });
+    // "이번 달에 시작한 개수"가 아니라 "지금 이 순간 읽는 중(완료 안 된) 상태인 개수" — 월과 무관하게 실시간 값, 두 소스 합산
+    const [paperReadingCount, haiReadingCount] = await Promise.all([
+      this.paperReadingStatusRepository.count({
+        where: { userId, status: ReadingStatusEnum.READING },
+      }),
+      this.haiPaperReadingStatusRepository.count({
+        where: { userId, status: ReadingStatusEnum.READING },
+      }),
+    ]);
+    const readingCount = paperReadingCount + haiReadingCount;
 
-    const completedCount = await this.paperReadingStatusRepository
-      .createQueryBuilder('status')
-      .where('status.userId = :userId', { userId })
-      .andWhere('status.completed_at IS NOT NULL')
-      .andWhere("TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM') = :yearMonth", { yearMonth })
-      .getCount();
+    const [paperCompletedCount, haiCompletedCount] = await Promise.all([
+      this.paperReadingStatusRepository
+        .createQueryBuilder('status')
+        .where('status.userId = :userId', { userId })
+        .andWhere('status.completed_at IS NOT NULL')
+        .andWhere(
+          "TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM') = :yearMonth",
+          { yearMonth },
+        )
+        .getCount(),
+      this.haiPaperReadingStatusRepository
+        .createQueryBuilder('status')
+        .where('status.userId = :userId', { userId })
+        .andWhere('status.completed_at IS NOT NULL')
+        .andWhere(
+          "TO_CHAR(status.completed_at AT TIME ZONE 'Asia/Seoul', 'YYYY-MM') = :yearMonth",
+          { yearMonth },
+        )
+        .getCount(),
+    ]);
+    const completedCount = paperCompletedCount + haiCompletedCount;
 
     const streak = await this.calculateStreak(userId);
 
     return { year, month, days, readingCount, completedCount, streak };
   }
 
-  // 오늘(또는 마지막 활동일)부터 거슬러 올라가며 활동이 끊기지 않고 이어진 일수 계산
+  // 오늘(또는 마지막 활동일)부터 거슬러 올라가며 활동이 끊기지 않고 이어진 일수 계산 (arxiv 논문 + HAI 논문 통합)
   private async calculateStreak(userId: number): Promise<number> {
-    const rows = await this.readingActivityLogRepository
-      .createQueryBuilder('log')
-      .select("DISTINCT TO_CHAR(log.date, 'YYYY-MM-DD')", 'date')
-      .where('log.userId = :userId', { userId })
-      .getRawMany<{ date: string }>();
+    const [paperRows, haiRows] = await Promise.all([
+      this.readingActivityLogRepository
+        .createQueryBuilder('log')
+        .select("DISTINCT TO_CHAR(log.date, 'YYYY-MM-DD')", 'date')
+        .where('log.userId = :userId', { userId })
+        .getRawMany<{ date: string }>(),
+      this.haiPaperActivityLogRepository
+        .createQueryBuilder('log')
+        .select("DISTINCT TO_CHAR(log.date, 'YYYY-MM-DD')", 'date')
+        .where('log.userId = :userId', { userId })
+        .getRawMany<{ date: string }>(),
+    ]);
 
-    if (rows.length === 0) return 0;
+    const dateSet = new Set([
+      ...paperRows.map((r) => r.date),
+      ...haiRows.map((r) => r.date),
+    ]);
 
-    const dateSet = new Set(rows.map((r) => r.date));
+    if (dateSet.size === 0) return 0;
+
     const cursor = new Date();
 
     // 오늘 활동이 아직 없으면 어제부터 계산(오늘 하루가 안 끝났다고 스트릭이 끊기지 않게)
@@ -429,59 +568,110 @@ export class PapersService {
     return this.toDateStr(new Date());
   }
 
-  // 이어서 읽어볼까요(읽는 중 논문) 목록 조회
+  // 이어서 읽어볼까요(읽는 중 논문) 목록 조회 (arxiv 논문 + HAI 논문 통합, startedAt 최신순)
   async getContinueReadingPapers(userId: number) {
     await this.expireStaleReadingStatuses(userId); // 목록 조회 전에 30일 지난 읽는 중 상태부터 정리
 
-    const statuses = await this.paperReadingStatusRepository.find({
-      where: { userId, status: ReadingStatusEnum.READING },
-      order: { startedAt: 'DESC' },
-    });
-
-    if (statuses.length === 0) return [];
-
-    const arxivIds = statuses.map((s) => s.paperId);
-
-    const [papers, bookmarks] = await Promise.all([
-      this.papersRepository.find({
-        where: { arxivId: In(arxivIds) },
-        relations: { researchFields: true },
+    const [paperStatuses, haiStatuses] = await Promise.all([
+      this.paperReadingStatusRepository.find({
+        where: { userId, status: ReadingStatusEnum.READING },
       }),
-      this.paperBookmarkRepository.find({
-        where: { userId, paperId: In(arxivIds) },
+      this.haiPaperReadingStatusRepository.find({
+        where: { userId, status: ReadingStatusEnum.READING },
       }),
+    ]);
+
+    if (paperStatuses.length === 0 && haiStatuses.length === 0) return [];
+
+    const arxivIds = paperStatuses.map((s) => s.paperId);
+    const haiIds = haiStatuses.map((s) => s.haiPaperId);
+
+    const [papers, bookmarks, haiPapers, haiBookmarks] = await Promise.all([
+      arxivIds.length
+        ? this.papersRepository.find({
+            where: { arxivId: In(arxivIds) },
+            relations: { researchFields: true },
+          })
+        : Promise.resolve([] as Paper[]),
+      arxivIds.length
+        ? this.paperBookmarkRepository.find({
+            where: { userId, paperId: In(arxivIds) },
+          })
+        : Promise.resolve([] as PaperBookmark[]),
+      haiIds.length
+        ? this.haiPapersRepository.find({ where: { id: In(haiIds) } })
+        : Promise.resolve([] as HaiPaper[]),
+      haiIds.length
+        ? this.haiPaperBookmarkRepository.find({
+            where: { userId, haiPaperId: In(haiIds) },
+          })
+        : Promise.resolve([] as HaiPaperBookmark[]),
     ]);
 
     const paperMap = new Map(papers.map((p) => [p.arxivId, p]));
     const bookmarkedSet = new Set(bookmarks.map((b) => b.paperId));
+    const haiPaperMap = new Map(haiPapers.map((p) => [p.id, p]));
+    const haiBookmarkedSet = new Set(haiBookmarks.map((b) => b.haiPaperId));
 
-    return arxivIds
-      .map((arxivId) => paperMap.get(arxivId))
-      .filter((p): p is Paper => !!p)
-      .map((paper) => ({
-        arxivId: paper.arxivId,
-        title: paper.title,
-        publishedDate: paper.publishedDate,
-        tags: paper.researchFields.map((f) => f.name),
-        isBookmark: bookmarkedSet.has(paper.arxivId),
-        readingStatus: 'reading' as const,
-      }));
+    // 정렬용 startedAt은 item과 분리해서 들고 있다가, 정렬 후 item만 뽑아서 반환한다.
+    const paperEntries = paperStatuses
+      .map((s) => {
+        const paper = paperMap.get(s.paperId);
+        if (!paper) return null;
+        return {
+          startedAt: s.startedAt,
+          item: {
+            type: 'paper' as const,
+            id: paper.arxivId,
+            title: paper.title,
+            publishedDate: paper.publishedDate,
+            tags: paper.researchFields.map((f) => f.name),
+            isBookmark: bookmarkedSet.has(paper.arxivId),
+            readingStatus: 'reading' as const,
+          },
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+
+    // HaiPaper는 아직 태그(연구분야) 개념이 없어 tags는 빈 배열로 반환(추후 태그 기능 추가 시 연결)
+    const haiEntries = haiStatuses
+      .map((s) => {
+        const haiPaper = haiPaperMap.get(s.haiPaperId);
+        if (!haiPaper) return null;
+        return {
+          startedAt: s.startedAt,
+          item: {
+            type: 'hai_paper' as const,
+            id: String(haiPaper.id),
+            title: haiPaper.title,
+            publishedDate: haiPaper.publishedYear,
+            tags: [] as string[],
+            isBookmark: haiBookmarkedSet.has(haiPaper.id),
+            readingStatus: 'reading' as const,
+          },
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+
+    return [...paperEntries, ...haiEntries]
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+      .map((entry) => entry.item);
   }
 
   // 논문 starTier 일괄 계산 및 저장
   async assignStarTiers() {
     const fieldThresholds: Record<string, { star3: number; star2: number }> = {
-      'cs.AI':   { star3: 500, star2: 100 },
-      'cs.LG':   { star3: 500, star2: 100 },
-      'cs.CV':   { star3: 500,  star2: 100 },
-      'cs.CL':   { star3: 500,  star2: 100 },
-      'stat.ML': { star3: 300,  star2: 80  },
-      'cs.IR':   { star3: 50,  star2: 20  },
-      'cs.MM':   { star3: 100,  star2: 50  },
-      'cs.SD':   { star3: 200,  star2: 40  },
-      'cs.RO':   { star3: 60,  star2: 20  },
-      'cs.SE':   { star3: 80,   star2: 15  },
-      'cs.HC':   { star3: 30,   star2: 10  },
+      'cs.AI': { star3: 500, star2: 100 },
+      'cs.LG': { star3: 500, star2: 100 },
+      'cs.CV': { star3: 500, star2: 100 },
+      'cs.CL': { star3: 500, star2: 100 },
+      'stat.ML': { star3: 300, star2: 80 },
+      'cs.IR': { star3: 50, star2: 20 },
+      'cs.MM': { star3: 100, star2: 50 },
+      'cs.SD': { star3: 200, star2: 40 },
+      'cs.RO': { star3: 60, star2: 20 },
+      'cs.SE': { star3: 80, star2: 15 },
+      'cs.HC': { star3: 30, star2: 10 },
     };
 
     const papers = await this.papersRepository.find({
@@ -494,7 +684,8 @@ export class PapersService {
     });
 
     for (const paper of papers) {
-      if (paper.influenceScore === null || paper.researchFields.length === 0) continue;
+      if (paper.influenceScore === null || paper.researchFields.length === 0)
+        continue;
 
       let starTier = 1;
 
@@ -509,24 +700,23 @@ export class PapersService {
         }
       }
 
-      await this.papersRepository.update({ arxivId: paper.arxivId }, { starTier });
+      await this.papersRepository.update(
+        { arxivId: paper.arxivId },
+        { starTier },
+      );
     }
 
     return { updated: papers.length };
   }
 
-
   // 임시 랜덤 벡터 생성 함수
   async saveTestEmbedding(arxivId: string) {
     // 1536차원 임시 랜덤 벡터 생성
-    const randomEmbedding = Array.from(
-        { length: 1536 }, 
-        () => Math.random()
-    );
+    const randomEmbedding = Array.from({ length: 1536 }, () => Math.random());
 
     await this.papersRepository.update(
-        { arxivId },
-        { embedding: JSON.stringify(randomEmbedding) },
+      { arxivId },
+      { embedding: JSON.stringify(randomEmbedding) },
     );
 
     return { success: true };
@@ -534,31 +724,31 @@ export class PapersService {
 
   // arxiv 논문 기준 유사 논문 추천(기본 논문 + 휴먼과 논문 통합)
   async getSimilarPapers(arxivId: string, limit: number = 5) {
-      const paper = await this.papersRepository.findOne({
-          where: { arxivId },
-          select: { arxivId: true, embedding: true },
-      });
+    const paper = await this.papersRepository.findOne({
+      where: { arxivId },
+      select: { arxivId: true, embedding: true },
+    });
 
-      if (!paper || !paper.embedding) {
-          throw new NotFoundException('해당 논문의 임베딩이 존재하지 않습니다.');
-      }
+    if (!paper || !paper.embedding) {
+      throw new NotFoundException('해당 논문의 임베딩이 존재하지 않습니다.');
+    }
 
-      return this.findSimilarByEmbedding(paper.embedding, { arxivId }, limit);
+    return this.findSimilarByEmbedding(paper.embedding, { arxivId }, limit);
   }
 
   // 주어진 임베딩 벡터로 기본 논문(paper) + 휴먼과 논문(hai_paper)을 통합 검색하여
   // 유사도 내림차순으로 섞인 단일 목록을 반환한다.
   // - exclude.arxivId / exclude.haiId: 기준이 된 논문 자신을 결과에서 제외
   async findSimilarByEmbedding(
-      embedding: string,
-      exclude: { arxivId?: string; haiId?: number },
-      limit: number = 5,
+    embedding: string,
+    exclude: { arxivId?: string; haiId?: number },
+    limit: number = 5,
   ) {
-      const excludeArxivId = exclude.arxivId ?? null;
-      const excludeHaiId = exclude.haiId ?? null;
+    const excludeArxivId = exclude.arxivId ?? null;
+    const excludeHaiId = exclude.haiId ?? null;
 
-      return this.papersRepository.query(
-        `SELECT * FROM (
+    return this.papersRepository.query(
+      `SELECT * FROM (
             SELECT 'arxiv' AS type, p."arxivId" AS id, p.title, p.pdf_url AS "pdfUrl",
                    1 - (p.embedding::vector <=> $1::vector) AS similarity
             FROM paper p
@@ -573,15 +763,16 @@ export class PapersService {
         ) AS combined
         ORDER BY similarity DESC
         LIMIT $4`,
-        [embedding, excludeArxivId, excludeHaiId, limit]
-      );
+      [embedding, excludeArxivId, excludeHaiId, limit],
+    );
   }
-
 
   // 논문 삭제 (arxivId 목록 또는 날짜 범위)
   async deletePapers(arxivIds?: string, startDate?: string, endDate?: string) {
     if (!arxivIds && !startDate && !endDate) {
-      throw new BadRequestException('arxivIds 또는 날짜 범위(startDate/endDate)를 입력해주세요');
+      throw new BadRequestException(
+        'arxivIds 또는 날짜 범위(startDate/endDate)를 입력해주세요',
+      );
     }
 
     // ── 1. 삭제 대상 논문 조회 ──────────────────────────────────────────────
@@ -594,17 +785,21 @@ export class PapersService {
         relations: { authors: true },
       });
     } else {
-      const qb = this.papersRepository.createQueryBuilder('paper')
+      const qb = this.papersRepository
+        .createQueryBuilder('paper')
         .leftJoinAndSelect('paper.authors', 'author');
-      if (startDate) qb.andWhere('paper.publishedDate >= :startDate', { startDate });
-      if (endDate)   qb.andWhere('paper.publishedDate <= :endDate', { endDate });
+      if (startDate)
+        qb.andWhere('paper.publishedDate >= :startDate', { startDate });
+      if (endDate) qb.andWhere('paper.publishedDate <= :endDate', { endDate });
       papersToDelete = await qb.getMany();
     }
 
     if (papersToDelete.length === 0) return { deleted: 0, authorsDeleted: 0 };
 
     // ── 2. 삭제 대상 저자 ID 수집 ────────────────────────────────────────────
-    const authorIds = [...new Set(papersToDelete.flatMap((p) => p.authors.map((a) => a.id)))];
+    const authorIds = [
+      ...new Set(papersToDelete.flatMap((p) => p.authors.map((a) => a.id))),
+    ];
 
     // ── 3. 논문 삭제 (북마크/aiSummary는 onDelete: CASCADE로 자동 처리, ManyToMany 조인 테이블도 cascade: true로 자동 처리)
     await this.papersRepository.remove(papersToDelete);
@@ -627,5 +822,4 @@ export class PapersService {
 
     return { deleted: papersToDelete.length, authorsDeleted };
   }
-
 }

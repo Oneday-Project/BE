@@ -28,6 +28,9 @@ import { ResearchFieldsModule } from './research-fields/research-fields.module';
 import { PaperBookmark } from './papers/entities/paper-bookmarks.entity';
 import { PaperReadingStatus } from './papers/entities/paper-reading-status.entity';
 import { ReadingActivityLog } from './papers/entities/reading-activity-log.entity';
+import { HaiPaperBookmark } from './papers/entities/hai-paper-bookmarks.entity';
+import { HaiPaperReadingStatus } from './papers/entities/hai-paper-reading-status.entity';
+import { HaiPaperActivityLog } from './papers/entities/hai-paper-activity-log.entity';
 import { ResponseTimeInterceptor } from './common/interceptor/response-time.intercepter';
 import { HaiPaperAiSummary } from './ai-services/entities/hai-paper-ai-summaries.entity';
 import { RoadmapModule } from './roadmap/roadmap.module';
@@ -77,6 +80,9 @@ import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
           UserRoadmap,
           PaperReadingStatus,
           ReadingActivityLog,
+          HaiPaperBookmark,
+          HaiPaperReadingStatus,
+          HaiPaperActivityLog,
         ],
         synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? false: true, 
         ssl: configService.get<string>(envVariableKeys.env) === 'prod'? { rejectUnauthorized: false } : false,
