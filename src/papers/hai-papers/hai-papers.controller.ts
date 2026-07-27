@@ -8,16 +8,20 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { HaiPapersService } from './hai-papers.service';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
 import { UpdatHAIpaperDto } from './dto/update-hai-paper.dto';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { GetHaiPapersPaginationDto } from './dto/get-hai-papers-pagination.dto';
+import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { User } from 'src/users/decorator/user.decorator';
+import { OptionalUser } from 'src/users/decorator/optional-user.decorator';
+import { OptionalAuthGuard } from 'src/auth/guard/optional-auth.guard';
 import { TransactionInterceptor } from 'src/common/interceptor/transaction.interceptor';
 import { QueryRunner } from 'src/common/decorator/query-runner.decorator';
 import type { QueryRunner as QR } from 'typeorm';
@@ -31,8 +35,34 @@ export class HaiPapersController {
   @ApiOperation({
     description: '모든 휴먼과 논문 가져오는 API',
   })
-  getAllPapers() {
-    return this.haiPapersService.getAllHaiPapers();
+  @ApiQuery({
+    name: 'tags',
+    required: false,
+    example: ['CV', 'LLM'],
+    description: '분야(태그) 기반 검색',
+    isArray: true,
+  })
+  @ApiQuery({
+    name: 'department',
+    required: false,
+    example: ['이의철 교수 연구실'],
+    description: '연구실 기반 검색(다중 선택 가능)',
+    isArray: true,
+  })
+  @ApiQuery({
+    name: 'order',
+    required: false,
+    example: ['publishedYear_DESC'],
+    description: '컬럼 기반 내림차 또는 오름차 정렬',
+    isArray: true,
+  })
+  @IsPublic()
+  @UseGuards(OptionalAuthGuard)
+  getAllPapers(
+    @Query() dto: GetHaiPapersPaginationDto,
+    @OptionalUser('id') userId?: number,
+  ) {
+    return this.haiPapersService.getAllHaiPapers(dto, userId);
   }
 
   @Get(':id')
@@ -96,7 +126,7 @@ export class HaiPapersController {
 
   @Post()
   @ApiOperation({
-    description: '휴먼과 논문 생성 API',
+    description: '휴먼과 논문 생성 API(관리자 권한)',
   })
   @Roles(RolesEnum.ADMIN)
   createPaper(@Body() dto: CreateHAIpaperDto) {
@@ -105,7 +135,7 @@ export class HaiPapersController {
 
   @Patch(':id')
   @ApiOperation({
-    description: 'id 기반 단일 휴먼과 논문을 수정하는 API',
+    description: 'id 기반 단일 휴먼과 논문을 수정하는 API(관리자 권한)',
   })
   @Roles(RolesEnum.ADMIN)
   updatePaper(
@@ -117,7 +147,7 @@ export class HaiPapersController {
 
   @Delete(':id')
   @ApiOperation({
-    description: 'id 기반 단일 휴먼과 논문을 삭제하는 API',
+    description: 'id 기반 단일 휴먼과 논문을 삭제하는 API(관리자 권한)',
   })
   @Roles(RolesEnum.ADMIN)
   deletePaper(@Param('id', ParseIntPipe) id: number) {

@@ -4,9 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryRunner, Repository } from 'typeorm';
+import { In, QueryRunner, Repository } from 'typeorm';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
 import { UpdatHAIpaperDto } from './dto/update-hai-paper.dto';
+import { GetHaiPapersPaginationDto } from './dto/get-hai-papers-pagination.dto';
 import { HaiPaper } from '../entities/hai-papers.entity';
 import { HaiPaperBookmark } from '../entities/hai-paper-bookmarks.entity';
 import { HaiPaperReadingStatus } from '../entities/hai-paper-reading-status.entity';
@@ -14,6 +15,7 @@ import { HaiPaperActivityLog } from '../entities/hai-paper-activity-log.entity';
 import { ReadingStatusEnum } from '../entities/paper-reading-status.entity';
 import { PapersService } from '../papers.service';
 import { UsersService } from 'src/users/users.service';
+import { CommonService } from 'src/common/common.service';
 
 @Injectable()
 export class HaiPapersService {
@@ -30,6 +32,7 @@ export class HaiPapersService {
     private readonly haiPaperActivityLogRepository: Repository<HaiPaperActivityLog>,
     private readonly usersService: UsersService,
     private readonly papersService: PapersService,
+    private readonly commonService: CommonService,
   ) {}
 
   async createHaiPaper(dto: CreateHAIpaperDto) {
@@ -48,8 +51,75 @@ export class HaiPapersService {
     return this.haipapersRepository.save(haiPaper);
   }
 
-  async getAllHaiPapers() {
-    return this.haipapersRepository.find();
+  // 조건에 해당되는 모든 휴먼과 논문 가져오기(페이지네이션/검색 적용, PapersService.getAllPapers와 동일한 방식)
+  // researchFields/authors가 관계가 아니라 simple-json 컬럼이라 조인 없이 바로 필터링한다.
+  async getAllHaiPapers(dto: GetHaiPapersPaginationDto, userId?: number) {
+    const { keyword, tags, department, yearRange } = dto;
+
+    const qb = this.haipapersRepository.createQueryBuilder('haiPaper');
+
+    // 분야(태그)로 검색하는 기능 - researchFields는 simple-json 배열 컬럼이라 jsonb로 캐스팅해서 원소 매칭
+    if (tags && tags.length > 0) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM jsonb_array_elements_text(COALESCE("haiPaper"."researchFields", '[]')::jsonb) AS tag WHERE tag IN (:...tags))`,
+        { tags },
+      );
+    }
+
+    // 연구실(department)로 검색하는 기능 - 다중 선택 가능
+    if (department && department.length > 0) {
+      qb.andWhere('haiPaper.department IN (:...department)', { department });
+    }
+
+    // 검색창 기능(제목/초록/저자에서 찾아서 검색)
+    if (keyword) {
+      qb.andWhere(
+        `(haiPaper.title ILIKE :keyword OR haiPaper.abstract ILIKE :keyword OR haiPaper.authors ILIKE :keyword)`,
+        { keyword: `%${keyword}%` },
+      );
+    }
+
+    // 최근 몇년으로 검색하는 기능 (publishedYear가 연도 문자열이라 문자열 비교로 처리)
+    if (yearRange) {
+      const startYear = String(new Date().getFullYear() - yearRange);
+      qb.andWhere('haiPaper.publishedYear >= :startYear', { startYear });
+    }
+
+    const result = await this.commonService.cursorPagination(qb, dto);
+
+    if (userId === undefined || result.data.length === 0) {
+      return result;
+    }
+
+    const haiIds = result.data.map((p) => p.id);
+
+    const [bookmarks, statuses] = await Promise.all([
+      this.haiPaperBookmarkRepository.find({
+        where: { userId, haiPaperId: In(haiIds) },
+      }),
+      this.haiPaperReadingStatusRepository.find({
+        where: { userId, haiPaperId: In(haiIds) },
+      }),
+    ]);
+
+    const bookmarkedSet = new Set(bookmarks.map((b) => b.haiPaperId));
+    const statusMap = new Map(statuses.map((s) => [s.haiPaperId, s]));
+
+    const data = result.data.map((haiPaper) => {
+      const status = statusMap.get(haiPaper.id);
+      const readingStatus =
+        !status || (status.status === ReadingStatusEnum.READING && this.isExpiredReading(status))
+          ? 'unread'
+          : status.status;
+
+      return {
+        ...haiPaper,
+        isBookmark: bookmarkedSet.has(haiPaper.id),
+        readingStatus,
+      };
+    });
+
+    return { ...result, data };
   }
 
   // id 기반 단일 휴먼과 논문 GET

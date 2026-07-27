@@ -13,7 +13,6 @@ export class BasePaginationDto {
 
     @ApiPropertyOptional({
         description: '페이지네이션 커서',
-        example: 'eyJ2YWx1ZXMiOnsiaW5mbHVlbmNlU2NvcmUiOjQ4NzN9LCJvcmRlciI6WyJpbmZsdWVuY2VTY29yZV9ERVNDIl19', 
     })
     @IsString()
     @IsOptional()

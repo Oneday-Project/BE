@@ -35,6 +35,9 @@ export class HaiPaper extends BaseModel {
   @Column({ name: 'published_year', nullable: true })
   publishedYear!: string; // 발행년도
 
+  @Column('simple-json', { nullable: true })
+  researchFields!: string[] | null; // 분야(tag)
+
   @Column({ name: 'pdf_url', type: 'text', nullable: true })
   pdfUrl!: string; // pdf링크
 
