@@ -4,7 +4,17 @@ import { BasePaginationDto } from "./dto/base-pagination.dto";
 
 @Injectable()
 export class CommonService {
+    // 컬럼명으로 허용할 형태(영문/숫자/언더스코어, 숫자로 시작 불가) — SQL Injection 방지용 화이트리스트
+    private readonly COLUMN_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
     constructor(){}
+
+    // order/cursor로 들어온 컬럼명이 raw SQL로 그대로 삽입되기 전에 형식을 검증한다
+    private assertValidColumnName(column: string) {
+        if (!this.COLUMN_NAME_PATTERN.test(column)) {
+            throw new BadRequestException(`잘못된 컬럼 이름입니다: ${column}`);
+        }
+    }
 
     async pagePagination<T extends ObjectLiteral>(qb: SelectQueryBuilder<T>, dto: BasePaginationDto) {
         let {page, take, order} = dto; // order 추가
@@ -51,6 +61,7 @@ export class CommonService {
 
             const {values} = cursorObj;
             const columns = Object.keys(values);
+            columns.forEach((column) => this.assertValidColumnName(column));
 
             // [변경] 기존의 단순 부등호 비교에서 복합 OR 조건으로 변경
             // 기존: (column1, column2) < (:value1, :value2) 방식
@@ -131,6 +142,8 @@ export class CommonService {
             if(direction !== 'ASC' && direction !== 'DESC'){
                 throw new BadRequestException('Order는 ASC 또는 DESC로 입력해주세요!');
             }
+
+            this.assertValidColumnName(column);
 
             if(i === 0){
                 qb.orderBy(`${qb.alias}.${column}`, direction as 'ASC' | 'DESC');

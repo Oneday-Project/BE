@@ -1,9 +1,11 @@
-import { Controller, Delete, Get, Param, ParseIntPipe, Post, Query, UseInterceptors } from '@nestjs/common';
+import { Controller, Delete, Get, Param, ParseIntPipe, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { PapersService } from './papers.service';
 import { GetPapersPaginationDto } from './dto/get-papers-pagination.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { User } from 'src/users/decorator/user.decorator';
+import { OptionalUser } from 'src/users/decorator/optional-user.decorator';
+import { OptionalAuthGuard } from 'src/auth/guard/optional-auth.guard';
 import { TransactionInterceptor } from 'src/common/interceptor/transaction.interceptor';
 import { QueryRunner } from 'src/common/decorator/query-runner.decorator';
 import type { QueryRunner as QR } from 'typeorm';
@@ -37,10 +39,12 @@ export class PapersController {
     isArray: true,
   })
   @IsPublic()
+  @UseGuards(OptionalAuthGuard)
   getAllPapers(
     @Query() dto: GetPapersPaginationDto,
+    @OptionalUser('id') userId?: number,
   ) {
-    return this.papersService.getAllPapers(dto);
+    return this.papersService.getAllPapers(dto, userId);
   }
 
   
@@ -160,13 +164,6 @@ export class PapersController {
   }
 
 
-
-  @Post('paper/:arxivId/embedding')
-  @ApiOperation({ description: '단일 논문에 랜덤 임베딩 벡터 할당 API' })
-  @ApiExcludeEndpoint()
-  saveTestEmbedding(@Param('arxivId') arxivId: string) {
-      return this.papersService.saveTestEmbedding(arxivId);
-  }
 
   @Get('paper/:arxivId/similar')
   @IsPublic()

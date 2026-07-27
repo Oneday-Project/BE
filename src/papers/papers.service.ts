@@ -53,8 +53,10 @@ export class PapersService {
   ) {}
 
   // 조건에 해당되는 모든 논문 가져오기(페이지네이션 적용)
-  async getAllPapers(dto: GetPapersPaginationDto) {
-    const { keyword, tags, yearRange, startDate, endDate } = dto;
+  // userId가 주어지면(로그인한 유저의 API 호출) 카드마다 북마크 여부/읽기상태를 함께 반환한다.
+  // 비로그인(게스트) 호출 시에는 userId가 undefined이며, 이 경우 개인화 데이터 없이 논문 목록만 반환한다.
+  async getAllPapers(dto: GetPapersPaginationDto, userId?: number) {
+    const { keyword, tags, yearRange, startDate, endDate, starTier } = dto;
 
     const qb = this.papersRepository
       .createQueryBuilder('paper')
@@ -124,11 +126,50 @@ export class PapersService {
       }
     }
 
+    // 별점 티어(중요도)로 검색하는 기능
+    if (starTier) {
+      qb.andWhere('paper.starTier = :starTier', { starTier });
+    }
+
     // 커서 기반 페이지네이션
-    return this.commonService.cursorPagination(qb, dto);
+    const result = await this.commonService.cursorPagination(qb, dto);
 
     // // 페이지 기반 페이지네이션
     // return this.commonService.pagePagination(qb, dto);
+
+    if (userId === undefined || result.data.length === 0) {
+      return result;
+    }
+
+    const arxivIds = result.data.map((p) => p.arxivId);
+
+    const [bookmarks, statuses] = await Promise.all([
+      this.paperBookmarkRepository.find({
+        where: { userId, paperId: In(arxivIds) },
+      }),
+      this.paperReadingStatusRepository.find({
+        where: { userId, paperId: In(arxivIds) },
+      }),
+    ]);
+
+    const bookmarkedSet = new Set(bookmarks.map((b) => b.paperId));
+    const statusMap = new Map(statuses.map((s) => [s.paperId, s]));
+
+    const data = result.data.map((paper) => {
+      const status = statusMap.get(paper.arxivId);
+      const readingStatus =
+        !status || (status.status === ReadingStatusEnum.READING && this.isExpiredReading(status))
+          ? 'unread'
+          : status.status;
+
+      return {
+        ...paper,
+        isBookmark: bookmarkedSet.has(paper.arxivId),
+        readingStatus,
+      };
+    });
+
+    return { ...result, data };
   }
 
   // arxivId 기반 단일 논문 GET
@@ -707,19 +748,6 @@ export class PapersService {
     }
 
     return { updated: papers.length };
-  }
-
-  // 임시 랜덤 벡터 생성 함수
-  async saveTestEmbedding(arxivId: string) {
-    // 1536차원 임시 랜덤 벡터 생성
-    const randomEmbedding = Array.from({ length: 1536 }, () => Math.random());
-
-    await this.papersRepository.update(
-      { arxivId },
-      { embedding: JSON.stringify(randomEmbedding) },
-    );
-
-    return { success: true };
   }
 
   // arxiv 논문 기준 유사 논문 추천(기본 논문 + 휴먼과 논문 통합)
