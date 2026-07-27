@@ -28,7 +28,7 @@ export class PapersController {
   @ApiQuery({
     name: 'tags',
     required: false,
-    example: ['cs.CV', 'cs.HC'],
+    example: ['CV', 'HCI'],
     description: '태그 기반 검색',
     isArray: true,
   })

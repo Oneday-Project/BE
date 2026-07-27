@@ -70,7 +70,7 @@ export class PapersService {
         .createQueryBuilder('paper')
         .select('paper."arxivId"')
         .leftJoin('paper.researchFields', 'researchField')
-        .where('researchField.name IN (:...tags)', { tags })
+        .where('researchField.tag IN (:...tags)', { tags })
         .distinct(true);
 
       // getQuery() - QueryBuilder를 "SQL문(문자열)"으로 바꿔주는 함수
@@ -138,11 +138,19 @@ export class PapersService {
     // // 페이지 기반 페이지네이션
     // return this.commonService.pagePagination(qb, dto);
 
-    if (userId === undefined || result.data.length === 0) {
-      return result;
+    // researchFields를 ResearchField 엔티티 배열이 아니라 tag 문자열 배열로 단순화(태그 없는 분야는 제외)
+    const papersWithTags = result.data.map((paper) => ({
+      ...paper,
+      researchFields: paper.researchFields
+        .filter((f) => f.tag)
+        .map((f) => f.tag),
+    }));
+
+    if (userId === undefined || papersWithTags.length === 0) {
+      return { ...result, data: papersWithTags };
     }
 
-    const arxivIds = result.data.map((p) => p.arxivId);
+    const arxivIds = papersWithTags.map((p) => p.arxivId);
 
     const [bookmarks, statuses] = await Promise.all([
       this.paperBookmarkRepository.find({
@@ -156,7 +164,7 @@ export class PapersService {
     const bookmarkedSet = new Set(bookmarks.map((b) => b.paperId));
     const statusMap = new Map(statuses.map((s) => [s.paperId, s]));
 
-    const data = result.data.map((paper) => {
+    const data = papersWithTags.map((paper) => {
       const status = statusMap.get(paper.arxivId);
       const readingStatus =
         !status || (status.status === ReadingStatusEnum.READING && this.isExpiredReading(status))
@@ -192,13 +200,21 @@ export class PapersService {
       throw new NotFoundException('존재하지 않는 논문입니다!');
     }
 
+    // researchFields를 ResearchField 엔티티 배열이 아니라 tag 문자열 배열로 단순화(태그 없는 분야는 제외)
+    const paperWithTags = {
+      ...paper,
+      researchFields: paper.researchFields
+        .filter((f) => f.tag)
+        .map((f) => f.tag),
+    };
+
     if (userId === undefined) {
-      return paper;
+      return paperWithTags;
     }
 
     const readingStatus = await this.resolveReadingStatus(arxivId, userId);
 
-    return { ...paper, readingStatus };
+    return { ...paperWithTags, readingStatus };
   }
 
   // 모든 저자 GET

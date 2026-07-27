@@ -114,7 +114,11 @@ export class AiServicesService {
             throw new ConflictException('해당 논문의 AI 요약이 이미 존재합니다!');
         }
 
-        const paper = await this.papersService.getPaperByArxivId(arxivId);
+        const paper = await this.papersRepository.findOne({ where: { arxivId } });
+
+        if (!paper) {
+            throw new NotFoundException('존재하지 않는 논문입니다!');
+        }
 
         return this.summarizeAndSavePaper(paper, new Date().getFullYear());
     }
