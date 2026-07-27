@@ -48,8 +48,9 @@ export class AiServicesController {
 
   @Post('papers/:arxivId')
   @ApiOperation({
-    description: 'arxivId 기반 단일 논문 AI 요약을 생성하는 API',
+    description: 'arxivId 기반 단일 논문 AI 요약을 생성하는 API(관리자 권한)',
   })
+  @Roles(RolesEnum.ADMIN)
   generatePaperAiSummary(
     @Param('arxivId') arxivId: string,
     //@Body() dto: CreatePaperAiSummaryDTO,
@@ -80,8 +81,9 @@ export class AiServicesController {
 
   @Post('hai-papers/:id')
   @ApiOperation({
-    description: 'id 기반 휴먼과 단일 논문 AI 요약을 생성하는 API', 
+    description: 'id 기반 휴먼과 단일 논문 AI 요약을 생성하는 API(관리자 권한)',
   })
+  @Roles(RolesEnum.ADMIN)
   createHaiPaperAiSummary(
     @Param('id', ParseIntPipe) id: number,
   ){
@@ -100,15 +102,17 @@ export class AiServicesController {
   }
 
   @Post('papers/:arxivId/embedding')
-  @ApiOperation({ description: '단일 논문에 GPT 임베딩 벡터 할당 API' })
+  @ApiOperation({ description: '단일 논문에 GPT 임베딩 벡터 할당 API(관리자 권한)' })
   @ApiExcludeEndpoint()
+  @Roles(RolesEnum.ADMIN)
   saveTestEmbedding(@Param('arxivId') arxivId: string) {
       return this.aiServicesService.generatePaperEmbedding(arxivId);
   }
 
   @Post('hai-papers/:id/embedding')
-  @ApiOperation({ description: '단일 휴먼과 논문에 GPT 임베딩 벡터 할당 API' })
+  @ApiOperation({ description: '단일 휴먼과 논문에 GPT 임베딩 벡터 할당 API(관리자 권한)' })
   @ApiExcludeEndpoint()
+  @Roles(RolesEnum.ADMIN)
   generateHaiPaperEmbedding(@Param('id', ParseIntPipe) id: number) {
       return this.aiServicesService.generateHaiPaperEmbedding(id);
   }
