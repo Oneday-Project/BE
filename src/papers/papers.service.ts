@@ -23,6 +23,7 @@ import { HaiPaperReadingStatus } from './entities/hai-paper-reading-status.entit
 import { HaiPaperActivityLog } from './entities/hai-paper-activity-log.entity';
 import { GetAuthorsPaginationDto } from './dto/get-authors-pagination.dto';
 import { GetReadingCalendarDto } from './dto/get-reading-calendar.dto';
+import { GetLibraryDto, LibraryTypeEnum } from './dto/get-library.dto';
 
 @Injectable()
 export class PapersService {
@@ -609,94 +610,142 @@ export class PapersService {
     return this.toDateStr(new Date());
   }
 
-  // 이어서 읽어볼까요(읽는 중 논문) 목록 조회 (arxiv 논문 + HAI 논문 통합, startedAt 최신순)
-  async getContinueReadingPapers(userId: number) {
+  // 마이페이지 라이브러리 목록 조회 (북마크/읽는 중/다 읽음, arxiv 논문 + HAI 논문 통합, 페이지네이션 적용)
+  // 정렬 기준이 되는 (id, 날짜)만 먼저 가볍게 조회해서 병합/정렬/페이지 슬라이스한 뒤,
+  // 그 페이지에 해당하는 논문만 상세 조회(하이드레이션)한다 — 매번 전체 논문 데이터를 불러오지 않기 위함.
+  async getMyLibrary(userId: number, dto: GetLibraryDto) {
+    const { type } = dto;
+    const page = dto.page ?? 1;
+    const take = dto.take;
+
     await this.expireStaleReadingStatuses(userId); // 목록 조회 전에 30일 지난 읽는 중 상태부터 정리
 
-    const [paperStatuses, haiStatuses] = await Promise.all([
-      this.paperReadingStatusRepository.find({
-        where: { userId, status: ReadingStatusEnum.READING },
-      }),
-      this.haiPaperReadingStatusRepository.find({
-        where: { userId, status: ReadingStatusEnum.READING },
-      }),
-    ]);
+    type LibraryEntry = { id: string | number; date: Date };
+    let paperEntries: LibraryEntry[];
+    let haiEntries: LibraryEntry[];
 
-    if (paperStatuses.length === 0 && haiStatuses.length === 0) return [];
+    if (type === LibraryTypeEnum.BOOKMARK) {
+      const [paperBookmarks, haiBookmarks] = await Promise.all([
+        this.paperBookmarkRepository.find({ where: { userId } }),
+        this.haiPaperBookmarkRepository.find({ where: { userId } }),
+      ]);
+      paperEntries = paperBookmarks.map((b) => ({ id: b.paperId, date: b.createdAt }));
+      haiEntries = haiBookmarks.map((b) => ({ id: b.haiPaperId, date: b.createdAt }));
+    } else {
+      const status =
+        type === LibraryTypeEnum.READING
+          ? ReadingStatusEnum.READING
+          : ReadingStatusEnum.COMPLETED;
 
-    const arxivIds = paperStatuses.map((s) => s.paperId);
-    const haiIds = haiStatuses.map((s) => s.haiPaperId);
+      const [paperStatuses, haiStatuses] = await Promise.all([
+        this.paperReadingStatusRepository.find({ where: { userId, status } }),
+        this.haiPaperReadingStatusRepository.find({ where: { userId, status } }),
+      ]);
 
-    const [papers, bookmarks, haiPapers, haiBookmarks] = await Promise.all([
-      arxivIds.length
-        ? this.papersRepository.find({
-            where: { arxivId: In(arxivIds) },
-            relations: { researchFields: true },
-          })
-        : Promise.resolve([] as Paper[]),
-      arxivIds.length
-        ? this.paperBookmarkRepository.find({
-            where: { userId, paperId: In(arxivIds) },
-          })
-        : Promise.resolve([] as PaperBookmark[]),
-      haiIds.length
-        ? this.haiPapersRepository.find({ where: { id: In(haiIds) } })
-        : Promise.resolve([] as HaiPaper[]),
-      haiIds.length
-        ? this.haiPaperBookmarkRepository.find({
-            where: { userId, haiPaperId: In(haiIds) },
-          })
-        : Promise.resolve([] as HaiPaperBookmark[]),
-    ]);
+      paperEntries = paperStatuses.map((s) => ({
+        id: s.paperId,
+        date: type === LibraryTypeEnum.READING ? s.startedAt : s.completedAt!,
+      }));
+      haiEntries = haiStatuses.map((s) => ({
+        id: s.haiPaperId,
+        date: type === LibraryTypeEnum.READING ? s.startedAt : s.completedAt!,
+      }));
+    }
+
+    const merged = [
+      ...paperEntries.map((e) => ({ ...e, source: 'paper' as const })),
+      ...haiEntries.map((e) => ({ ...e, source: 'hai_paper' as const })),
+    ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    const total = merged.length;
+    const totalPages = Math.ceil(total / take);
+    const pageItems = merged.slice((page - 1) * take, page * take);
+
+    if (pageItems.length === 0) {
+      return { data: [], total, totalPages, page };
+    }
+
+    const pageArxivIds = pageItems
+      .filter((e) => e.source === 'paper')
+      .map((e) => e.id as string);
+    const pageHaiIds = pageItems
+      .filter((e) => e.source === 'hai_paper')
+      .map((e) => e.id as number);
+
+    const [papers, haiPapers, paperBookmarksOnPage, haiBookmarksOnPage, paperStatusesOnPage, haiStatusesOnPage] =
+      await Promise.all([
+        pageArxivIds.length
+          ? this.papersRepository.find({
+              where: { arxivId: In(pageArxivIds) },
+              relations: { researchFields: true },
+            })
+          : Promise.resolve([] as Paper[]),
+        pageHaiIds.length
+          ? this.haiPapersRepository.find({ where: { id: In(pageHaiIds) } })
+          : Promise.resolve([] as HaiPaper[]),
+        pageArxivIds.length
+          ? this.paperBookmarkRepository.find({
+              where: { userId, paperId: In(pageArxivIds) },
+            })
+          : Promise.resolve([] as PaperBookmark[]),
+        pageHaiIds.length
+          ? this.haiPaperBookmarkRepository.find({
+              where: { userId, haiPaperId: In(pageHaiIds) },
+            })
+          : Promise.resolve([] as HaiPaperBookmark[]),
+        pageArxivIds.length
+          ? this.paperReadingStatusRepository.find({
+              where: { userId, paperId: In(pageArxivIds) },
+            })
+          : Promise.resolve([] as PaperReadingStatus[]),
+        pageHaiIds.length
+          ? this.haiPaperReadingStatusRepository.find({
+              where: { userId, haiPaperId: In(pageHaiIds) },
+            })
+          : Promise.resolve([] as HaiPaperReadingStatus[]),
+      ]);
 
     const paperMap = new Map(papers.map((p) => [p.arxivId, p]));
-    const bookmarkedSet = new Set(bookmarks.map((b) => b.paperId));
     const haiPaperMap = new Map(haiPapers.map((p) => [p.id, p]));
-    const haiBookmarkedSet = new Set(haiBookmarks.map((b) => b.haiPaperId));
+    const bookmarkedSet = new Set(paperBookmarksOnPage.map((b) => b.paperId));
+    const haiBookmarkedSet = new Set(haiBookmarksOnPage.map((b) => b.haiPaperId));
+    const readingStatusMap = new Map(paperStatusesOnPage.map((s) => [s.paperId, s.status]));
+    const haiReadingStatusMap = new Map(
+      haiStatusesOnPage.map((s) => [s.haiPaperId, s.status]),
+    );
 
-    // 정렬용 startedAt은 item과 분리해서 들고 있다가, 정렬 후 item만 뽑아서 반환한다.
-    const paperEntries = paperStatuses
-      .map((s) => {
-        const paper = paperMap.get(s.paperId);
-        if (!paper) return null;
-        return {
-          startedAt: s.startedAt,
-          item: {
+    const data = pageItems
+      .map((entry) => {
+        if (entry.source === 'paper') {
+          const paper = paperMap.get(entry.id as string);
+          if (!paper) return null;
+          return {
             type: 'paper' as const,
             id: paper.arxivId,
             title: paper.title,
             publishedDate: paper.publishedDate,
             tags: paper.researchFields.map((f) => f.name),
             isBookmark: bookmarkedSet.has(paper.arxivId),
-            readingStatus: 'reading' as const,
-          },
-        };
-      })
-      .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+            readingStatus: readingStatusMap.get(paper.arxivId) ?? 'unread',
+          };
+        }
 
-    // HaiPaper는 아직 태그(연구분야) 개념이 없어 tags는 빈 배열로 반환(추후 태그 기능 추가 시 연결)
-    const haiEntries = haiStatuses
-      .map((s) => {
-        const haiPaper = haiPaperMap.get(s.haiPaperId);
+        // HaiPaper는 아직 태그(연구분야) 개념이 없어 tags는 빈 배열로 반환(추후 태그 기능 추가 시 연결)
+        const haiPaper = haiPaperMap.get(entry.id as number);
         if (!haiPaper) return null;
         return {
-          startedAt: s.startedAt,
-          item: {
-            type: 'hai_paper' as const,
-            id: String(haiPaper.id),
-            title: haiPaper.title,
-            publishedDate: haiPaper.publishedYear,
-            tags: [] as string[],
-            isBookmark: haiBookmarkedSet.has(haiPaper.id),
-            readingStatus: 'reading' as const,
-          },
+          type: 'hai_paper' as const,
+          id: String(haiPaper.id),
+          title: haiPaper.title,
+          publishedDate: haiPaper.publishedYear,
+          tags: [] as string[],
+          isBookmark: haiBookmarkedSet.has(haiPaper.id),
+          readingStatus: haiReadingStatusMap.get(haiPaper.id) ?? 'unread',
         };
       })
-      .filter((entry): entry is NonNullable<typeof entry> => !!entry);
+      .filter((item): item is NonNullable<typeof item> => !!item);
 
-    return [...paperEntries, ...haiEntries]
-      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
-      .map((entry) => entry.item);
+    return { data, total, totalPages, page };
   }
 
   // 논문 starTier 일괄 계산 및 저장

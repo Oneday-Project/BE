@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiQuery } from '@nest
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { GetAuthorsPaginationDto } from './dto/get-authors-pagination.dto';
 import { GetReadingCalendarDto } from './dto/get-reading-calendar.dto';
+import { GetLibraryDto } from './dto/get-library.dto';
 
 @Controller('papers')
 @ApiBearerAuth()
@@ -101,14 +102,15 @@ export class PapersController {
   }
 
 
-  @Get('reading-status/continue')
+  @Get('library')
   @ApiOperation({
-    description: '이어서 읽어볼까요(읽는 중 논문) 목록 조회 API',
+    description: '마이페이지 라이브러리(북마크한 논문/읽고 있는 논문/다 읽은 논문) 목록 조회 API',
   })
-  getContinueReadingPapers(
+  getMyLibrary(
+    @Query() dto: GetLibraryDto,
     @User('id') userId: number,
   ){
-    return this.papersService.getContinueReadingPapers(userId);
+    return this.papersService.getMyLibrary(userId, dto);
   }
 
 

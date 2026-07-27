@@ -1,9 +1,10 @@
 import { Entity, JoinColumn, ManyToOne, PrimaryColumn } from "typeorm";
 import { Paper } from "./papers.entity";
 import { User } from "src/users/entities/users.entity";
+import { BaseModel } from "src/common/entities/base.entity";
 
 @Entity()
-export class PaperBookmark {
+export class PaperBookmark extends BaseModel {
     @PrimaryColumn({
         name: 'paperId',
         type: 'text',

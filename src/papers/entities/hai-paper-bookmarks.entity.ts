@@ -1,9 +1,10 @@
 import { Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { HaiPaper } from './hai-papers.entity';
 import { User } from 'src/users/entities/users.entity';
+import { BaseModel } from 'src/common/entities/base.entity';
 
 @Entity()
-export class HaiPaperBookmark {
+export class HaiPaperBookmark extends BaseModel {
   @PrimaryColumn({
     name: 'haiPaperId',
     type: 'int',
