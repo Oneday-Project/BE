@@ -139,9 +139,14 @@ export class HaiPapersService {
       return haiPaper;
     }
 
-    const readingStatus = await this.resolveReadingStatus(id, userId);
+    const [readingStatus, bookmark] = await Promise.all([
+      this.resolveReadingStatus(id, userId),
+      this.haiPaperBookmarkRepository.findOne({
+        where: { haiPaperId: id, userId },
+      }),
+    ]);
 
-    return { ...haiPaper, readingStatus };
+    return { ...haiPaper, isBookmark: !!bookmark, readingStatus };
   }
 
   async updateHaiPaper(id: number, dto: UpdatHAIpaperDto) {

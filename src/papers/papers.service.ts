@@ -138,12 +138,13 @@ export class PapersService {
     // // 페이지 기반 페이지네이션
     // return this.commonService.pagePagination(qb, dto);
 
-    // researchFields를 ResearchField 엔티티 배열이 아니라 tag 문자열 배열로 단순화(태그 없는 분야는 제외)
+    // researchFields는 tag 문자열 배열로, authors는 이름 문자열 배열로 단순화
     const papersWithTags = result.data.map((paper) => ({
       ...paper,
       researchFields: paper.researchFields
         .filter((f) => f.tag)
         .map((f) => f.tag),
+      authors: paper.authors.map((a) => a.name),
     }));
 
     if (userId === undefined || papersWithTags.length === 0) {
@@ -200,21 +201,27 @@ export class PapersService {
       throw new NotFoundException('존재하지 않는 논문입니다!');
     }
 
-    // researchFields를 ResearchField 엔티티 배열이 아니라 tag 문자열 배열로 단순화(태그 없는 분야는 제외)
+    // researchFields는 tag 문자열 배열로, authors는 이름 문자열 배열로 단순화
     const paperWithTags = {
       ...paper,
       researchFields: paper.researchFields
         .filter((f) => f.tag)
         .map((f) => f.tag),
+      authors: paper.authors.map((a) => a.name),
     };
 
     if (userId === undefined) {
       return paperWithTags;
     }
 
-    const readingStatus = await this.resolveReadingStatus(arxivId, userId);
+    const [readingStatus, bookmark] = await Promise.all([
+      this.resolveReadingStatus(arxivId, userId),
+      this.paperBookmarkRepository.findOne({
+        where: { paperId: arxivId, userId },
+      }),
+    ]);
 
-    return { ...paperWithTags, readingStatus };
+    return { ...paperWithTags, isBookmark: !!bookmark, readingStatus };
   }
 
   // 모든 저자 GET
