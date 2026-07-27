@@ -12,6 +12,12 @@ export class ResearchField extends BaseModel{
     })
     name!: string;
 
+    @Column({
+        nullable: true,
+        unique: true,
+    })
+    tag!: string; // 검색/화면 표시용 짧은 라벨(예: cs.CV -> CV)
+
     @ManyToMany(() => Paper, (paper) => paper.researchFields)
     papers!: Paper[];
-}     
+} 

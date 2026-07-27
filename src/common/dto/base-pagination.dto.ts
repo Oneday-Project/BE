@@ -36,5 +36,5 @@ export class BasePaginationDto {
     })
     @IsInt()
     @IsOptional()
-    take: number = 12; 
+    take: number = 12;
 }

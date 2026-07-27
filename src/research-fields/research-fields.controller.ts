@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { ResearchFieldsService } from './research-fields.service';
+import { UpdateResearchFieldDto } from './dto/update-research-field.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -27,5 +28,18 @@ export class ResearchFieldsController {
     @Body('name') name: string,
   ){
     return this.researchFieldsService.createResearchField(name);
+  }
+
+
+  @Patch(':id')
+  @ApiOperation({
+    description: 'id 기반 단일 연구분야를 수정하는 API(관리자 권한)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  updateResearchField(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateResearchFieldDto,
+  ){
+    return this.researchFieldsService.updateResearchField(id, dto);
   }
 }

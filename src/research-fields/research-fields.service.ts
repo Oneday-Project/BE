@@ -1,7 +1,8 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ResearchField } from 'src/research-fields/entities/research-fields.entity';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
+import { UpdateResearchFieldDto } from './dto/update-research-field.dto';
 
 @Injectable()
 export class ResearchFieldsService {
@@ -30,5 +31,39 @@ export class ResearchFieldsService {
         const researchField = this.researchFieldsRepository.create({name});
 
         return this.researchFieldsRepository.save(researchField);
+    }
+
+    // 분야 수정(태그 등)
+    async updateResearchField(id: number, dto: UpdateResearchFieldDto){
+        const researchField = await this.researchFieldsRepository.exists({
+            where: {
+                id,
+            }
+        });
+
+        if(!researchField){
+            throw new NotFoundException('존재하지 않는 연구 분야입니다!');
+        }
+
+        if(dto.tag){
+            const tagExists = await this.researchFieldsRepository.exists({
+                where: {
+                    id: Not(id),
+                    tag: dto.tag,
+                }
+            });
+
+            if(tagExists){
+                throw new ConflictException('이미 존재하는 태그입니다!');
+            }
+        }
+
+        await this.researchFieldsRepository.update(id, dto);
+
+        return this.researchFieldsRepository.findOne({
+            where: {
+                id,
+            }
+        });
     }
 }
