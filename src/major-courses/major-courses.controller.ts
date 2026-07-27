@@ -32,7 +32,7 @@ export class MajorCoursesController {
   @Post()
   @Roles(RolesEnum.ADMIN)
   @ApiOperation({
-    description: '휴먼과 전공과목을 생성하는 API', 
+    description: '휴먼과 전공과목을 생성하는 API(관리자 권한)', 
   })
   createCourse(@Body() dto: CreateMajorCourseDto) {
     return this.majorCoursesService.createCourse(dto);
@@ -41,7 +41,7 @@ export class MajorCoursesController {
   @Patch(':courseId')
   @Roles(RolesEnum.ADMIN)
   @ApiOperation({
-    description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 수정하는 API', 
+    description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 수정하는 API(관리자 권한)', 
   })
   updateCourse(
     @Param('courseId') id: string, 
@@ -53,7 +53,7 @@ export class MajorCoursesController {
   @Delete(':courseId')
   @Roles(RolesEnum.ADMIN)
   @ApiOperation({
-    description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 삭제하는 API', 
+    description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 삭제하는 API(관리자 권한)', 
   })
   deleteCourse(@Param('courseId') courseId: string) {
     return this.majorCoursesService.deleteCourse(courseId);

@@ -69,7 +69,7 @@ export class UsersController {
 
   @Delete(':userId')
   @ApiOperation({
-    description: 'userId 기반 단일 사용자 정보를 삭제하는 API', 
+    description: 'userId 기반 단일 사용자 정보를 삭제하는 API(관리자 권한)', 
   })
   @Roles(RolesEnum.ADMIN)
   removeUserByAdmin(@Param('userId', ParseIntPipe) id: number) {

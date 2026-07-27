@@ -28,4 +28,9 @@ export class CreateHAIpaperDto {
 
     @IsString()
     pdfUrl!: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    researchFields?: string[];
 }

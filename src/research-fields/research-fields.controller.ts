@@ -20,7 +20,7 @@ export class ResearchFieldsController {
 
   @Post()
   @ApiOperation({
-    description: '연구분야를 생성하는 API', 
+    description: '연구분야를 생성하는 API(관리자 권한)', 
   })
   @Roles(RolesEnum.ADMIN)
   createResearchField(
