@@ -14,6 +14,7 @@ import { HaiPaperBookmark } from './entities/hai-paper-bookmarks.entity';
 import { HaiPaperReadingStatus } from './entities/hai-paper-reading-status.entity';
 import { HaiPaperActivityLog } from './entities/hai-paper-activity-log.entity';
 import { UsersModule } from 'src/users/users.module';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UsersModule } from 'src/users/users.module';
     ]),
     CommonModule,
     UsersModule,
+    AuthModule,
   ],
   controllers: [PapersController],
   providers: [PapersService],
