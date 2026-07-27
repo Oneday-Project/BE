@@ -24,7 +24,7 @@ export class UsersController {
     description: '사용자 자신의 정보를 가져오는 API', 
   })
   findMyInfo(@User('id') id: number) {
-    return this.usersService.findMyLibrary(id);
+    return this.usersService.findMyInfo(id);
   }
 
   @Get(':userId')

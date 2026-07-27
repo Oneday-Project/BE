@@ -80,25 +80,11 @@ export class UsersService {
     return user;
   }
 
-  // /users/me 전용 - 북마크(arxiv+HAI) + 읽기 상태(arxiv+HAI)까지 전부 포함해서 조회
-  async findMyLibrary(id: number) {
+  // /users/me 전용 - 프로필 정보만 가볍게 조회 (북마크/읽기 목록은 /papers/library 에서 페이지네이션으로 조회)
+  async findMyInfo(id: number) {
     const user = await this.userRepository.findOne({
       where: {
         id,
-      },
-      relations: {
-        bookmarkPapers: {
-          paper: true,
-        },
-        bookmarkHaiPapers: {
-          haiPaper: true,
-        },
-        readingPapers: {
-          paper: true,
-        },
-        readingHaiPapers: {
-          haiPaper: true,
-        },
       },
     });
 
