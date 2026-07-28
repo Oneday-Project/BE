@@ -62,7 +62,7 @@ export class PapersController {
   }
 
 
-  @Post('paper/:arxivId/reading-status')
+  @Post('paper/:arxivId/reading-status/reading')
   @ApiOperation({
     description: '읽는 중 상태를 토글(시작/취소)하는 API',
   })
