@@ -132,6 +132,26 @@ export class PapersService {
       qb.andWhere('paper.starTier = :starTier', { starTier });
     }
 
+    // 읽기 완료한 논문 포함 여부(로그인 시에만 적용 — 게스트는 완료 상태를 알 수 없으므로 무시)
+    if (dto.includeCompleted === false && userId !== undefined) {
+      const completedSubQb = this.paperReadingStatusRepository
+        .createQueryBuilder('status')
+        .select('status."paperId"')
+        .where('status."userId" = :excludeCompletedUserId', {
+          excludeCompletedUserId: userId,
+        })
+        .andWhere('status.status = :completedStatus', {
+          completedStatus: ReadingStatusEnum.COMPLETED,
+        });
+
+      qb.andWhere(
+        `paper."arxivId" NOT IN (${completedSubQb.getQuery()})`,
+      ).setParameters({
+        ...qb.getParameters(),
+        ...completedSubQb.getParameters(),
+      });
+    }
+
     // 커서 기반 페이지네이션
     const result = await this.commonService.cursorPagination(qb, dto);
 

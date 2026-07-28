@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsArray, IsNumber, IsOptional, IsString, MinLength } from "class-validator";
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, MinLength } from "class-validator";
 import { BasePaginationDto } from "src/common/dto/base-pagination.dto";
 
 export class GetPapersPaginationDto extends BasePaginationDto{
@@ -67,4 +67,18 @@ export class GetPapersPaginationDto extends BasePaginationDto{
     // 들어가는 데이터 예시
     // [id_DESC, likeCount_DESC]
     order: string[] = ['publishedDate_DESC'];
+
+
+    @ApiPropertyOptional({
+        description: '읽기 완료한 논문 포함 여부(로그인 시에만 적용, 기본값 true=포함)',
+        type: Boolean,
+        default: true,
+    })
+    // 타입을 boolean으로 선언하면 ValidationPipe의 enableImplicitConversion이
+    // 'false' 문자열도 Boolean('false')===true로 잘못 변환해버리는 문제가 있어
+    // string | boolean으로 선언해 그 자동 변환 경로를 피하고 아래 Transform으로 직접 변환한다
+    @Transform(({ value }) => value === 'false' ? false : value === 'true' ? true : value)
+    @IsBoolean()
+    @IsOptional()
+    includeCompleted: string | boolean = true;
 }
