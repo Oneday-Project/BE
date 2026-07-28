@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { ResearchFieldsService } from './research-fields.service';
+import { CreateResearchFieldDto } from './dto/create-research-field.dto';
 import { UpdateResearchFieldDto } from './dto/update-research-field.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from 'src/users/const/roles.const';
@@ -25,9 +26,9 @@ export class ResearchFieldsController {
   })
   @Roles(RolesEnum.ADMIN)
   createResearchField(
-    @Body('name') name: string,
+    @Body() dto: CreateResearchFieldDto,
   ){
-    return this.researchFieldsService.createResearchField(name);
+    return this.researchFieldsService.createResearchField(dto);
   }
 
 

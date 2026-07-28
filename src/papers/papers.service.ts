@@ -747,13 +747,12 @@ export class PapersService {
             id: paper.arxivId,
             title: paper.title,
             publishedDate: paper.publishedDate,
-            tags: paper.researchFields.map((f) => f.name),
+            tags: paper.researchFields.filter((f) => f.tag).map((f) => f.tag),
             isBookmark: bookmarkedSet.has(paper.arxivId),
             readingStatus: readingStatusMap.get(paper.arxivId) ?? 'unread',
           };
         }
 
-        // HaiPaper는 아직 태그(연구분야) 개념이 없어 tags는 빈 배열로 반환(추후 태그 기능 추가 시 연결)
         const haiPaper = haiPaperMap.get(entry.id as number);
         if (!haiPaper) return null;
         return {
@@ -761,7 +760,7 @@ export class PapersService {
           id: String(haiPaper.id),
           title: haiPaper.title,
           publishedDate: haiPaper.publishedYear,
-          tags: [] as string[],
+          tags: haiPaper.researchFields ?? [],
           isBookmark: haiBookmarkedSet.has(haiPaper.id),
           readingStatus: haiReadingStatusMap.get(haiPaper.id) ?? 'unread',
         };

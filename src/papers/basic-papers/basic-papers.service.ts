@@ -621,6 +621,8 @@ export class BasicPapersService {
 
     // ── 8. papers 저장 ────────────────────────────────────────────────────
     const finalToInsert: Paper[] = [];
+    let categorySkipped = 0;
+    let dateSkipped = 0;
 
     for (const a of toInsert) {
       const ss = ss2Map.get(a.arxivId)!; // inner join 했으므로 반드시 존재
@@ -631,7 +633,17 @@ export class BasicPapersService {
         .filter((cat): cat is ResearchField => cat !== undefined);
 
       // [변경] 매핑되는 분야가 하나도 없으면 papers에 통합하지 않고 제외
-      if (categoryEntities.length === 0) continue;
+      if (categoryEntities.length === 0) {
+        categorySkipped++;
+        continue;
+      }
+
+      // publishedDate는 Paper에서 NOT NULL인데 SS 데이터에 없을 수 있고 대체할 값이 없으므로,
+      // 억지로 채워넣지 않고 이번 통합에서 제외한다(SS가 나중에 값을 채우면 그때 재수집됨).
+      if (!ss.publishedDate) {
+        dateSkipped++;
+        continue;
+      }
 
       // [변경] 저자 매핑 — SS authorId 우선, 없으면 name 기반 key로 조회
       const ssAuthors = ssAuthorMap.get(a.arxivId);
@@ -651,8 +663,9 @@ export class BasicPapersService {
           pdfUrl:         a.pdfUrl,
           doi:            ss.doi,
           publishedDate:  ss.publishedDate,
-          citationCount:  ss.citationCount,
-          influenceScore: ss.influenceScore,
+          // citationCount/influenceScore는 값이 없으면 "아직 집계 안 됨 = 0"으로 취급(NOT NULL 위반 방지)
+          citationCount:  ss.citationCount ?? 0,
+          influenceScore: ss.influenceScore ?? 0,
           journal:        ss.journal,
         }),
       );
@@ -664,7 +677,6 @@ export class BasicPapersService {
     }
 
     const saved = finalToInsert.length;
-    const categorySkipped = toInsert.length - saved;
 
     // ── 9. raw 테이블 전체 정리 — integrate 완료 후 두 테이블 모두 비움 ───────
     await Promise.all([
@@ -672,7 +684,7 @@ export class BasicPapersService {
       this.ss2Repository.clear(),
     ]);
 
-    return { total: joined.length, saved, alreadyExists, categorySkipped };
+    return { total: joined.length, saved, alreadyExists, categorySkipped, dateSkipped };
   }
 
   // ══════════════════════════════════════════════════════════════════
