@@ -766,6 +766,7 @@ export class PapersService {
             type: 'paper' as const,
             id: paper.arxivId,
             title: paper.title,
+            abstract: paper.abstract,
             publishedDate: paper.publishedDate,
             tags: paper.researchFields.filter((f) => f.tag).map((f) => f.tag),
             isBookmark: bookmarkedSet.has(paper.arxivId),
@@ -779,12 +780,13 @@ export class PapersService {
           type: 'hai_paper' as const,
           id: String(haiPaper.id),
           title: haiPaper.title,
+          abstract: haiPaper.abstract,
           publishedDate: haiPaper.publishedYear,
           tags: haiPaper.researchFields ?? [],
           isBookmark: haiBookmarkedSet.has(haiPaper.id),
           readingStatus: haiReadingStatusMap.get(haiPaper.id) ?? 'unread',
         };
-      })
+      }) 
       .filter((item): item is NonNullable<typeof item> => !!item);
 
     return { data, total, totalPages, page };

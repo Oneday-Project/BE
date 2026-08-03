@@ -86,7 +86,7 @@ export class HaiPapersController {
     return this.haiPapersService.toggleHaiPaperBookmark(id, userId, qr);
   }
 
-  @Post(':id/reading-status')
+  @Post(':id/reading-status/reading')
   @ApiOperation({
     description: '휴먼과 논문 읽는 중 상태를 토글(시작/취소)하는 API',
   })
