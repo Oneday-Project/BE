@@ -170,11 +170,12 @@ export class AnalyzeRoadmapDto {
     q11!: number;
 
     @ApiProperty({
-        description: 'Q12 현재 누적 평점(GPA) 구간 (단일 선택, 마지막 질문)',
-        example: '3.5 이상 ~ 4.0 미만',
-        enum: GPA_BANDS,
+        description:
+            'Q12 현재 누적 평점(GPA) 구간 (단일 선택, 0/2.5/5/7.5/10 중 하나로 환산해 전달, 마지막 질문)',
+        example: 7.5,
+        enum: SCALE_VALUES,
     })
-    @IsString()
-    @IsIn(GPA_BANDS)
-    gpaBand!: string;
+    @IsNumber()
+    @IsIn(SCALE_VALUES)
+    gpaBand!: number;
 }
