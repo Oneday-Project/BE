@@ -16,7 +16,6 @@ import {
     AnalyzeRoadmapDto,
     Q9_NONE,
     Q10_NONE,
-    GPA_BANDS,
 } from './dto/analyze-roadmap.dto';
 import { AiServicesService } from 'src/ai-services/ai-services.service';
 import { MajorCourse } from 'src/major-courses/entities/major-course.entity';
@@ -36,11 +35,6 @@ export class RoadmapService {
         private readonly aiServicesService: AiServicesService,
     ) {}
 
-    // GPA 구간을 점수로 환산 (구간 인덱스 * 2.5 -> 0 / 2.5 / 5 / 7.5 / 10)
-    private gpaScore(gpaBand: string): number {
-        return GPA_BANDS.indexOf(gpaBand as (typeof GPA_BANDS)[number]) * 2.5;
-    }
-
     // 복수 선택 문항을 점수로 환산 ('없음' 제외, 항목당 2.5점, 최대 10점)
     private multiSelectScore(items: string[], none: string): number {
         const count = items.filter((item) => item !== none).length;
@@ -55,7 +49,7 @@ export class RoadmapService {
         const q3to8 = dto.q3 + dto.q4 + dto.q5 + dto.q6 + dto.q7 + dto.q8;
         const q9Score = this.multiSelectScore(dto.q9, Q9_NONE);
         const q10Score = this.multiSelectScore(dto.q10, Q10_NONE);
-        return q3to8 + q9Score + q10Score + dto.q11 + this.gpaScore(dto.gpaBand);
+        return q3to8 + q9Score + q10Score + dto.q11 + dto.gpaBand;
     }
 
     // 메인페이지 오각형 그래프용 5개 축 점수 (각 0~10)
@@ -67,7 +61,7 @@ export class RoadmapService {
             experience: this.round((dto.q5 + dto.q6) / 2),
             paper: this.round((dto.q7 + dto.q8) / 2),
             preparation: this.round((q9Score + q10Score) / 2),
-            academic: this.round((dto.q11 + this.gpaScore(dto.gpaBand)) / 2),
+            academic: this.round((dto.q11 + dto.gpaBand) / 2),
         };
     }
 
@@ -89,8 +83,7 @@ export class RoadmapService {
         const weaknesses: string[] = [];
         if (dto.q5 <= 2.5) weaknesses.push('프로젝트 경험 부족');
         if (dto.q7 <= 2.5) weaknesses.push('연구 경험 부족');
-        // 하위 2개 구간('2.5 미만', '2.5 이상 ~ 3.0 미만')이면 학점 개선 필요
-        if (this.gpaScore(dto.gpaBand) <= 2.5) weaknesses.push('학점 개선 필요');
+        if (dto.gpaBand <= 2.5) weaknesses.push('학점 개선 필요');
         return weaknesses;
     }
 
