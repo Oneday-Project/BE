@@ -577,6 +577,77 @@ export class AiServicesService {
             return fallback;
         }
     }
+
+    // 결과 페이지 '성장 가이드' 섹션의 제안 문구(tips)를 GPT로 생성한다.
+    // 논문 읽기 빈도/대외 경험 수치는 roadmap 모듈에서 이미 계산해 label로 넘겨주므로,
+    // GPT는 그 값을 근거로 문구만 작성한다 (숫자 자체를 새로 만들지 않음).
+    private buildFallbackGrowthTips(params: RoadmapGrowthGuideParams): string[] {
+        return [
+            '논문 읽기 횟수를 유지하시되, 이해하고 정리할 수 있는 수준으로 학습해보세요.',
+            '관심 있는 분야의 최신 트렌드에 맞춰 다양한 형태의 대외 활동을 꾸준히 진행해보세요.',
+        ];
+    }
+
+    async generateRoadmapGrowthGuideTips(
+        params: RoadmapGrowthGuideParams,
+    ): Promise<string[]> {
+        const fallback = this.buildFallbackGrowthTips(params);
+
+        const systemPrompt = `
+            너는 대학원 진학을 준비하는 학생에게 성장 가이드를 제안하는 한국어 멘토다.
+
+            반드시 아래 필드 하나만 가진 JSON 객체를 반환한다.
+            - tips: 정확히 2개의 한국어 문장으로 이루어진 문자열 배열
+
+            작성 규칙:
+            1) 첫 번째 문장: user message의 "현재 논문 읽기 빈도"를 참고해서, 그 빈도를 유지하거나
+               이해도를 높이는 방향의 논문 읽기 습관 제안
+            2) 두 번째 문장: user message의 "현재 대외 경험"과 interestFields를 참고해서,
+               관심 분야의 최신 트렌드에 맞는 대외 활동(발표, 프로젝트, 스터디 등) 제안
+
+            조건:
+            - 각 문장 40~60자 내외, "~해보세요" 체의 부드러운 권유형으로 끝맺는다.
+            - 격려하는 따뜻한 톤. 과장 표현과 이모지는 쓰지 않는다.
+            - 숫자(빈도)를 임의로 바꾸지 않는다.
+        `;
+
+        const userPrompt = `
+            stage: ${params.stage}
+            interestFields: ${params.interestFields.join(', ')}
+            현재 논문 읽기 빈도: ${params.paperFrequencyLabel}
+            현재 대외 경험: ${params.externalActivityLabel}
+            strengths: ${params.strengths.join(', ') || '없음'}
+            weaknesses: ${params.weaknesses.join(', ') || '없음'}
+            radar(각 0~10):
+              이해도: ${params.radar.interest}
+              경험: ${params.radar.experience}
+              논문 루틴: ${params.radar.paper}
+              포트폴리오: ${params.radar.preparation}
+              성적: ${params.radar.academic}
+        `;
+
+        try {
+            const response = await this.openai.chat.completions.create({
+                model: this.gptModel,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                response_format: { type: 'json_object' },
+            });
+
+            const result = JSON.parse(response.choices[0].message.content!);
+            const tips = Array.isArray(result.tips)
+                ? result.tips.filter(
+                      (t: unknown) => typeof t === 'string' && t.trim(),
+                  )
+                : [];
+            return tips.length === 2 ? tips : fallback;
+        } catch (e) {
+            // GPT 호출/파싱 실패 시에도 로드맵 생성은 계속되도록 fallback 문구 사용
+            return fallback;
+        }
+    }
 }
 
 // 로드맵 종합 코멘트 생성 입력값
@@ -584,6 +655,24 @@ export interface RoadmapCommentParams {
     totalScore: number;
     stage: string;
     interestFields: string[];
+    strengths: string[];
+    weaknesses: string[];
+    radar: {
+        interest: number;
+        experience: number;
+        paper: number;
+        preparation: number;
+        academic: number;
+    };
+}
+
+// 로드맵 성장 가이드(tips) 생성 입력값
+// paperFrequencyLabel/externalActivityLabel은 roadmap 모듈에서 답변을 기반으로 미리 계산해 전달한다.
+export interface RoadmapGrowthGuideParams {
+    stage: string;
+    interestFields: string[];
+    paperFrequencyLabel: string;
+    externalActivityLabel: string;
     strengths: string[];
     weaknesses: string[];
     radar: {
