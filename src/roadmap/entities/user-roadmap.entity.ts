@@ -35,6 +35,11 @@ export interface RoadmapResult {
         paper: RoadmapTask[];
         growth: RoadmapTask[];
     };
+    growthGuide: {
+        paperFrequency: string; // 현재 논문 읽기 빈도 (Q7 답변 기반, 예: '월 1~3회')
+        externalActivity: string; // 현재 대외 경험 (Q9+Q10 선택 개수 기반, 예: '3~5회')
+        tips: string[]; // GPT가 생성한 성장 가이드 제안 (정확히 2개)
+    };
 }
 
 // 한 시점의 로드맵 스냅샷 (응답 + 분석 결과)

@@ -23,6 +23,15 @@ import { MajorCourse } from 'src/major-courses/entities/major-course.entity';
 // 기초 전공과목 태그. 관심 분야와 무관하게 항상 추천(강조) 처리한다.
 const MAJOR_BASIC_TAG = '기초';
 
+// Q7(한 달 평균 논문 읽는 편수) 점수 -> 성장 가이드에 표시할 빈도 라벨
+const PAPER_FREQUENCY_LABELS: Record<number, string> = {
+    0: '월 0회',
+    2.5: '월 1~3회',
+    5: '월 4~6회',
+    7.5: '월 7~9회',
+    10: '월 10회 이상',
+};
+
 @Injectable()
 export class RoadmapService {
     constructor(
@@ -87,6 +96,22 @@ export class RoadmapService {
         return weaknesses;
     }
 
+    // 성장 가이드 '현재 논문 빈도' 라벨 (Q7 답변 그대로 사용)
+    private paperFrequencyLabel(dto: AnalyzeRoadmapDto): string {
+        return PAPER_FREQUENCY_LABELS[dto.q7] ?? '월 0회';
+    }
+
+    // 성장 가이드 '현재 대외 경험' 라벨 (Q9+Q10 선택 개수, '없음' 제외, 최대 8개)
+    private externalActivityLabel(dto: AnalyzeRoadmapDto): string {
+        const count =
+            dto.q9.filter((item) => item !== Q9_NONE).length +
+            dto.q10.filter((item) => item !== Q10_NONE).length;
+        if (count === 0) return '0회';
+        if (count <= 2) return '1~2회';
+        if (count <= 5) return '3~5회';
+        return '6~8회';
+    }
+
     // 설문 응답을 분석해 로드맵 결과(점수/단계/레이더/추천 과제)를 만든다.
     private async buildResult(dto: AnalyzeRoadmapDto): Promise<RoadmapResult> {
         const totalScore = this.calculateScore(dto);
@@ -115,6 +140,18 @@ export class RoadmapService {
             radar,
         });
 
+        const paperFrequency = this.paperFrequencyLabel(dto);
+        const externalActivity = this.externalActivityLabel(dto);
+        const tips = await this.aiServicesService.generateRoadmapGrowthGuideTips({
+            stage,
+            interestFields: dto.interestFields,
+            paperFrequencyLabel: paperFrequency,
+            externalActivityLabel: externalActivity,
+            strengths,
+            weaknesses,
+            radar,
+        });
+
         return {
             overview: {
                 totalScore,
@@ -126,6 +163,11 @@ export class RoadmapService {
             strengths,
             weaknesses,
             roadmap,
+            growthGuide: {
+                paperFrequency,
+                externalActivity,
+                tips,
+            },
         };
     }
 
