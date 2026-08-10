@@ -17,7 +17,7 @@ export class ResearchFieldsService {
         return this.researchFieldsRepository.find();
     }
 
-    // 분야 생성
+    // 분야 생성하기
     async createResearchField(dto: CreateResearchFieldDto){
         const { name, tag } = dto;
 
