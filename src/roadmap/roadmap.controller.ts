@@ -1,11 +1,8 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { RoadmapService } from './roadmap.service';
 import { AnalyzeRoadmapDto } from './dto/analyze-roadmap.dto';
 import { User } from 'src/users/decorator/user.decorator';
-import { OptionalUser } from 'src/users/decorator/optional-user.decorator';
-import { IsPublic } from 'src/common/decorator/is-public.decorator';
-import { OptionalAuthGuard } from 'src/auth/guard/optional-auth.guard';
 
 @Controller('roadmap')
 @ApiBearerAuth()
@@ -15,14 +12,12 @@ export class RoadmapController {
     @Post('analyze')
     @ApiOperation({
         description:
-            '설문 응답 기반 로드맵 분석 (저장하지 않는 미리보기, 비회원도 호출 가능). ' +
-            '로그인 상태로 호출하면 논문 로드맵에서 이미 읽은 논문은 제외한다.',
+            '설문 응답 기반 로드맵 분석 (저장하지 않음). 로그인 필수 — ' +
+            'GPT를 호출하므로 비회원에게 절대 열지 않는다.',
     })
-    @IsPublic()
-    @UseGuards(OptionalAuthGuard)
     analyzeRoadmap(
+        @User('id') userId: number,
         @Body() dto: AnalyzeRoadmapDto,
-        @OptionalUser('id') userId?: number,
     ) {
         return this.roadmapService.analyzeRoadmap(dto, userId);
     }

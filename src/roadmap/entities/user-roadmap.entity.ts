@@ -36,9 +36,10 @@ export interface RoadmapRecommendedPaper {
     bookmarkCount: number;
     isBookmark?: boolean; // 로그인 상태일 때만 포함
     readingStatus?: string; // 로그인 상태일 때만 포함
-    // 카드 설명 텍스트는 원문 abstract 대신 이 한국어 AI 요약을 우선 사용한다.
-    // 아직 AI 요약이 생성되지 않은 논문이면 undefined (이 경우 abstract로 대체)
+    // 카드 설명 텍스트는 cardSummary(80~100자, "~논문"으로 끝나는 카드 전용 요약)를 우선 사용한다.
+    // 아직 AI 요약이 생성되지 않은 논문이면 aiSummary 자체가 undefined (이 경우 abstract로 대체)
     aiSummary?: {
+        cardSummary: string; // 논문 카드에 표시할 짧은 요약 - 이 화면에서 쓸 필드
         whyRead: string;
         abstractKor: string;
         what: string;
