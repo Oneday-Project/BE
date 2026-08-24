@@ -19,6 +19,40 @@ export interface RoadmapRadar {
     academic: number; // 학업 기반 (Q11, GPA)
 }
 
+// papers 모듈 조회 결과를 그대로 사용한다 (관심 분야 태그 매칭 + 안읽음 + 영향력지수 1위).
+// papers 모듈 자체의 타입을 import하지 않고 로드맵에서 쓰는 필드만 별도로 선언해 모듈 간 의존 방향을 유지한다.
+export interface RoadmapRecommendedPaper {
+    arxivId: string;
+    title: string;
+    abstract: string;
+    publishedDate: string;
+    citationCount: number;
+    influenceScore: number;
+    pdfUrl: string;
+    journal?: string;
+    researchFields: string[]; // 태그 문자열 배열
+    authors: string[]; // 저자명 배열
+    starTier?: number;
+    bookmarkCount: number;
+    isBookmark?: boolean; // 로그인 상태일 때만 포함
+    readingStatus?: string; // 로그인 상태일 때만 포함
+    // 카드 설명 텍스트는 원문 abstract 대신 이 한국어 AI 요약을 우선 사용한다.
+    // 아직 AI 요약이 생성되지 않은 논문이면 undefined (이 경우 abstract로 대체)
+    aiSummary?: {
+        whyRead: string;
+        abstractKor: string;
+        what: string;
+        how: string;
+        impact: string;
+    };
+}
+
+// 논문 로드맵 섹션 - 관심 분야(태그) 하나당 추천 논문 1편
+export interface RoadmapPaperRecommendation {
+    tag: string; // 추천 기준이 된 관심 분야 태그 (예: 'SML')
+    paper: RoadmapRecommendedPaper | null; // 조건에 맞는(안읽은) 논문이 없으면 null
+}
+
 // 설문 분석 결과 (analyzeRoadmap이 만들어내는 값)
 export interface RoadmapResult {
     overview: {
@@ -35,6 +69,8 @@ export interface RoadmapResult {
         paper: RoadmapTask[];
         growth: RoadmapTask[];
     };
+    // 관심 분야별 핵심 논문 추천 (papers 모듈 재사용, 영향력지수 1위 · 안읽은 논문 우선)
+    paperRoadmap: RoadmapPaperRecommendation[];
     growthGuide: {
         paperFrequency: string; // 현재 논문 읽기 빈도 (Q7 답변 기반, 예: '월 1~3회')
         externalActivity: string; // 현재 대외 경험 (Q9+Q10 선택 개수 기반, 예: '3~5회')

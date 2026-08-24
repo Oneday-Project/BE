@@ -5,8 +5,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { RoadmapTask, RoadmapStage } from './entities/roadmap-task.entity';
 import {
+    RoadmapTask,
+    RoadmapStage,
+    RoadmapPriority,
+} from './entities/roadmap-task.entity';
+import {
+    RoadmapPaperRecommendation,
     RoadmapRadar,
     RoadmapResult,
     RoadmapSnapshot,
@@ -19,6 +24,7 @@ import {
 } from './dto/analyze-roadmap.dto';
 import { AiServicesService } from 'src/ai-services/ai-services.service';
 import { MajorCourse } from 'src/major-courses/entities/major-course.entity';
+import { PapersService } from 'src/papers/papers.service';
 
 // 기초 전공과목 태그. 관심 분야와 무관하게 항상 추천(강조) 처리한다.
 const MAJOR_BASIC_TAG = '기초';
@@ -32,6 +38,15 @@ const PAPER_FREQUENCY_LABELS: Record<number, string> = {
     10: '월 10회 이상',
 };
 
+// 추천 과제 정렬 우선순위 (숫자가 작을수록 먼저 표시).
+// priority 컬럼은 varchar라 그대로 정렬하면 알파벳순(high, low, medium)이 되어버리므로
+// 조회 후 이 맵 기준으로 재정렬한다.
+const TASK_PRIORITY_ORDER: Record<RoadmapPriority, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+};
+
 @Injectable()
 export class RoadmapService {
     constructor(
@@ -42,6 +57,7 @@ export class RoadmapService {
         @InjectRepository(MajorCourse)
         private readonly majorCourseRepository: Repository<MajorCourse>,
         private readonly aiServicesService: AiServicesService,
+        private readonly papersService: PapersService,
     ) {}
 
     // 복수 선택 문항을 점수로 환산 ('없음' 제외, 항목당 2.5점, 최대 10점)
@@ -112,8 +128,46 @@ export class RoadmapService {
         return '6~8회';
     }
 
+    // 관심 분야(태그)별 핵심 논문 추천 (선택한 관심 분야 개수만큼, 최대 3개)
+    // papers 모듈의 조회를 그대로 재사용한다: 영향력 지표(influenceScore) 내림차순 1위를 뽑고,
+    // 로그인 상태면 이미 읽기 완료한 논문은 제외한다(비로그인은 완료 기록이 없으므로 전체 대상).
+    // 순위만 getAllPapers로 뽑고, 카드 표시용 상세 정보(AI 한국어 요약 포함)는
+    // getPaperByArxivId로 다시 조회한다(이 조회에만 aiSummary가 join되어 있음).
+    private async getPaperRoadmap(
+        interestFields: string[],
+        userId?: number,
+    ): Promise<RoadmapPaperRecommendation[]> {
+        return Promise.all(
+            interestFields.map(async (tag) => {
+                const { data } = await this.papersService.getAllPapers(
+                    {
+                        tags: [tag],
+                        order: ['influenceScore_DESC'],
+                        take: 1,
+                        includeCompleted: false,
+                    },
+                    userId,
+                );
+                const top = data[0];
+                if (!top) {
+                    return { tag, paper: null };
+                }
+
+                const paper = await this.papersService.getPaperByArxivId(
+                    top.arxivId,
+                    userId,
+                );
+                return { tag, paper };
+            }),
+        );
+    }
+
     // 설문 응답을 분석해 로드맵 결과(점수/단계/레이더/추천 과제)를 만든다.
-    private async buildResult(dto: AnalyzeRoadmapDto): Promise<RoadmapResult> {
+    // userId가 있으면(로그인 상태) 논문 로드맵을 그 사용자의 읽음 기록 기준으로 개인화한다.
+    private async buildResult(
+        dto: AnalyzeRoadmapDto,
+        userId?: number,
+    ): Promise<RoadmapResult> {
         const totalScore = this.calculateScore(dto);
         const stage = this.determineStage(totalScore);
         const radar = this.calculateRadar(dto);
@@ -122,8 +176,12 @@ export class RoadmapService {
 
         const tasks = await this.roadmapTaskRepository.find({
             where: { stage },
-            order: { priority: 'ASC' },
         });
+        tasks.sort(
+            (a, b) =>
+                TASK_PRIORITY_ORDER[a.priority] -
+                TASK_PRIORITY_ORDER[b.priority],
+        );
 
         const roadmap = {
             major: tasks.filter((t) => t.category === 'major'),
@@ -131,26 +189,30 @@ export class RoadmapService {
             growth: tasks.filter((t) => t.category === 'growth'),
         };
 
-        const comment = await this.aiServicesService.generateRoadmapComment({
-            totalScore,
-            stage,
-            interestFields: dto.interestFields,
-            strengths,
-            weaknesses,
-            radar,
-        });
-
         const paperFrequency = this.paperFrequencyLabel(dto);
         const externalActivity = this.externalActivityLabel(dto);
-        const tips = await this.aiServicesService.generateRoadmapGrowthGuideTips({
-            stage,
-            interestFields: dto.interestFields,
-            paperFrequencyLabel: paperFrequency,
-            externalActivityLabel: externalActivity,
-            strengths,
-            weaknesses,
-            radar,
-        });
+
+        // 서로 의존성 없는 GPT 호출 2건 + 논문 매칭 조회를 병렬로 실행해 응답 시간을 줄인다.
+        const [comment, tips, paperRoadmap] = await Promise.all([
+            this.aiServicesService.generateRoadmapComment({
+                totalScore,
+                stage,
+                interestFields: dto.interestFields,
+                strengths,
+                weaknesses,
+                radar,
+            }),
+            this.aiServicesService.generateRoadmapGrowthGuideTips({
+                stage,
+                interestFields: dto.interestFields,
+                paperFrequencyLabel: paperFrequency,
+                externalActivityLabel: externalActivity,
+                strengths,
+                weaknesses,
+                radar,
+            }),
+            this.getPaperRoadmap(dto.interestFields, userId),
+        ]);
 
         return {
             overview: {
@@ -163,6 +225,7 @@ export class RoadmapService {
             strengths,
             weaknesses,
             roadmap,
+            paperRoadmap,
             growthGuide: {
                 paperFrequency,
                 externalActivity,
@@ -173,8 +236,9 @@ export class RoadmapService {
 
     private async buildSnapshot(
         dto: AnalyzeRoadmapDto,
+        userId?: number,
     ): Promise<RoadmapSnapshot> {
-        const result = await this.buildResult(dto);
+        const result = await this.buildResult(dto, userId);
         return { answers: dto, result, createdAt: new Date().toISOString() };
     }
 
@@ -186,9 +250,13 @@ export class RoadmapService {
         };
     }
 
-    // 저장 없이 분석 결과만 반환 (생성 전 미리보기용)
-    async analyzeRoadmap(dto: AnalyzeRoadmapDto): Promise<RoadmapResult> {
-        return this.buildResult(dto);
+    // 저장 없이 분석 결과만 반환 (생성 전 미리보기용, 비회원도 호출 가능)
+    // userId가 있으면(로그인 상태) 논문 로드맵에서 이미 읽은 논문을 제외해 개인화한다.
+    async analyzeRoadmap(
+        dto: AnalyzeRoadmapDto,
+        userId?: number,
+    ): Promise<RoadmapResult> {
+        return this.buildResult(dto, userId);
     }
 
     // 최초 로드맵 생성. 이미 있으면 409 (수정 API로 안내).
@@ -202,7 +270,7 @@ export class RoadmapService {
             );
         }
 
-        const snapshot = await this.buildSnapshot(dto);
+        const snapshot = await this.buildSnapshot(dto, userId);
         const saved = await this.userRoadmapRepository.save(
             this.userRoadmapRepository.create({
                 userId,
@@ -224,7 +292,7 @@ export class RoadmapService {
             );
         }
 
-        userRoadmap.latest = await this.buildSnapshot(dto);
+        userRoadmap.latest = await this.buildSnapshot(dto, userId);
         const saved = await this.userRoadmapRepository.save(userRoadmap);
         return this.toResponse(saved);
     }
