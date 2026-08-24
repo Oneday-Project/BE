@@ -23,6 +23,9 @@ export class HaiPaperAiSummary extends BaseModel{
     @Column()
     model!: string; // 사용한 AI 모델 버전
 
+    @Column({nullable: true})
+    cardSummary?: string;
+
     @OneToOne(
         ()=>HaiPaper, 
         (haiPaper)=>haiPaper.aiSummary,

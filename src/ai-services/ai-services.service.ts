@@ -274,6 +274,7 @@ export class AiServicesService {
                 how: true,
                 impact: true,
                 model: true,
+                cardSummary: true,
                 haiPaper: {
                     id: true,
                     title: true,
@@ -322,6 +323,7 @@ export class AiServicesService {
             what: result.what,
             how: result.how,
             impact: result.impact,
+            cardSummary: result.cardSummary,
             model: this.gptModel,
             haiPaper,
         })
@@ -355,6 +357,8 @@ export class AiServicesService {
                 - publishedYear가 currentYear 기준 2년 초과인 경우:
                     실험 결과 수치나 성과, 그리고 이 연구가 해당 분야의 후속 연구에 미친 실제 영향을 구체적으로 작성한다.
                 반드시 180~200자 사이로 작성한다.
+            
+            - cardSummary: 이 논문을 반드시 80~100자 사이로 요약한다. 반드시 "~논문"으로 끝나야 한다.
         `;
 
         const userPrompt =
