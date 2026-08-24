@@ -47,6 +47,10 @@ const TASK_PRIORITY_ORDER: Record<RoadmapPriority, number> = {
     low: 2,
 };
 
+// 논문 로드맵에서 태그당 확보해 둘 후보 논문 수.
+// 앞 태그와 겹치거나 이미 읽은 논문을 건너뛰고도 카드를 채울 수 있도록 넉넉히 받아둔다.
+const PAPER_CANDIDATE_POOL_SIZE = 20;
+
 @Injectable()
 export class RoadmapService {
     constructor(
@@ -129,32 +133,68 @@ export class RoadmapService {
     }
 
     // 관심 분야(태그)별 핵심 논문 추천 (선택한 관심 분야 개수만큼, 최대 3개)
-    // papers 모듈의 조회를 그대로 재사용한다: 영향력 지표(influenceScore) 내림차순 1위를 뽑고,
-    // 로그인 상태면 이미 읽기 완료한 논문은 제외한다(비로그인은 완료 기록이 없으므로 전체 대상).
-    // 순위만 getAllPapers로 뽑고, 카드 표시용 상세 정보(AI 한국어 요약 포함)는
+    // papers 모듈의 조회를 그대로 재사용한다: 영향력 지표(influenceScore) 내림차순 후보를 받아
+    // 아래 우선순위로 태그마다 1편씩 배정한다.
+    // 순위만 getAllPapers로 뽑고, 카드 표시용 상세 정보(AI 카드 요약 포함)는
     // getPaperByArxivId로 다시 조회한다(이 조회에만 aiSummary가 join되어 있음).
     private async getPaperRoadmap(
         interestFields: string[],
-        userId?: number,
+        userId: number,
     ): Promise<RoadmapPaperRecommendation[]> {
-        return Promise.all(
+        // 읽음 여부 필터를 쿼리에 걸지 않고(includeCompleted: true) 후보를 통째로 받아온다.
+        // 쿼리에서 걸러버리면 '이미 다 읽은 분야'의 카드가 비어버리기 때문에,
+        // 읽음 여부는 아래에서 우선순위로만 반영한다. 응답의 readingStatus로 판별한다.
+        const candidatesByTag = await Promise.all(
             interestFields.map(async (tag) => {
                 const { data } = await this.papersService.getAllPapers(
                     {
                         tags: [tag],
                         order: ['influenceScore_DESC'],
-                        take: 1,
-                        includeCompleted: false,
+                        take: PAPER_CANDIDATE_POOL_SIZE,
+                        includeCompleted: true,
                     },
                     userId,
                 );
-                const top = data[0];
-                if (!top) {
+                return data;
+            }),
+        );
+
+        // 관심 분야를 선택한 순서대로 우선권을 준다. 각 태그는 아래 순서로 후보를 고른다.
+        //   1) 아직 안 읽었고 + 앞 태그가 안 가져간 논문      (가장 이상적)
+        //   2) 앞 태그가 안 가져간 논문 (이미 읽은 논문이라도)  - 중복 노출보다 낫다고 판단
+        //   3) 그 분야 1위 (앞 태그와 겹치더라도)             - 카드를 비우지 않기 위한 최후 수단
+        // 예: tag1과 tag2의 1위가 같으면 tag1이 그 논문을, tag2는 자기 2위를 가져간다.
+        // 그 분야에 논문이 DB에 아예 없을 때만 null이 된다.
+        const usedArxivIds = new Set<string>();
+        const picks = interestFields.map((tag, index) => {
+            const candidates = candidatesByTag[index];
+            const isUnused = (paper: { arxivId: string }) =>
+                !usedArxivIds.has(paper.arxivId);
+
+            const pick =
+                candidates.find(
+                    (paper) =>
+                        isUnused(paper) &&
+                        (!('readingStatus' in paper) ||
+                            paper.readingStatus !== 'completed'),
+                ) ??
+                candidates.find(isUnused) ??
+                candidates[0];
+
+            if (pick) {
+                usedArxivIds.add(pick.arxivId);
+            }
+            return { tag, arxivId: pick?.arxivId };
+        });
+
+        return Promise.all(
+            picks.map(async ({ tag, arxivId }) => {
+                if (!arxivId) {
                     return { tag, paper: null };
                 }
 
                 const paper = await this.papersService.getPaperByArxivId(
-                    top.arxivId,
+                    arxivId,
                     userId,
                 );
                 return { tag, paper };
@@ -163,10 +203,11 @@ export class RoadmapService {
     }
 
     // 설문 응답을 분석해 로드맵 결과(점수/단계/레이더/추천 과제)를 만든다.
-    // userId가 있으면(로그인 상태) 논문 로드맵을 그 사용자의 읽음 기록 기준으로 개인화한다.
+    // GPT를 호출하므로 반드시 로그인한 사용자만 도달할 수 있어야 한다(userId 필수).
+    // 논문 로드맵은 그 사용자의 읽음 기록 기준으로 개인화한다.
     private async buildResult(
         dto: AnalyzeRoadmapDto,
-        userId?: number,
+        userId: number,
     ): Promise<RoadmapResult> {
         const totalScore = this.calculateScore(dto);
         const stage = this.determineStage(totalScore);
@@ -236,7 +277,7 @@ export class RoadmapService {
 
     private async buildSnapshot(
         dto: AnalyzeRoadmapDto,
-        userId?: number,
+        userId: number,
     ): Promise<RoadmapSnapshot> {
         const result = await this.buildResult(dto, userId);
         return { answers: dto, result, createdAt: new Date().toISOString() };
@@ -250,11 +291,10 @@ export class RoadmapService {
         };
     }
 
-    // 저장 없이 분석 결과만 반환 (생성 전 미리보기용, 비회원도 호출 가능)
-    // userId가 있으면(로그인 상태) 논문 로드맵에서 이미 읽은 논문을 제외해 개인화한다.
+    // 저장 없이 분석 결과만 반환. GPT를 호출하므로 로그인 필수(userId 필수).
     async analyzeRoadmap(
         dto: AnalyzeRoadmapDto,
-        userId?: number,
+        userId: number,
     ): Promise<RoadmapResult> {
         return this.buildResult(dto, userId);
     }
