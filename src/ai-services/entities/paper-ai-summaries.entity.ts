@@ -25,6 +25,9 @@ export class PaperAiSummary extends BaseModel{
     @Column()
     model!: string; // 사용한 AI 모델 버전
 
+    @Column()
+    cardSummary!: string;
+
     @OneToOne(
         ()=>Paper, 
         (paper)=>paper.aiSummary,
@@ -32,6 +35,6 @@ export class PaperAiSummary extends BaseModel{
             onDelete: 'CASCADE',
         }
     )
-    @JoinColumn() 
+    @JoinColumn()
     paper!: Paper;
 } 

@@ -18,4 +18,7 @@ export class CreatePaperAiSummaryDTO {
 
     @IsString()
     model!: string; // 사용한 AI 모델 버전
+
+    @IsString()
+    cardSummary!: string;
 }
