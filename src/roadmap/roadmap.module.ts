@@ -6,11 +6,13 @@ import { RoadmapTask } from './entities/roadmap-task.entity';
 import { UserRoadmap } from './entities/user-roadmap.entity';
 import { AiServicesModule } from 'src/ai-services/ai-services.module';
 import { MajorCourse } from 'src/major-courses/entities/major-course.entity';
+import { PapersModule } from 'src/papers/papers.module';
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([RoadmapTask, UserRoadmap, MajorCourse]),
         AiServicesModule,
+        PapersModule,
     ],
     controllers: [RoadmapController],
     providers: [RoadmapService],
