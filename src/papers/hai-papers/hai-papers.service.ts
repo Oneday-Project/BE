@@ -204,11 +204,12 @@ export class HaiPapersService {
     const haiPaperBookmarkRepository =
       qr.manager.getRepository<HaiPaperBookmark>(HaiPaperBookmark);
 
-    const haiPaper = await haipapersRepository.findOne({
+    // 존재 여부만 확인하면 되므로 exists 사용(findOne이면 abstract까지 통째로 읽어온다)
+    const haiPaperExists = await haipapersRepository.exists({
       where: { id },
     });
 
-    if (!haiPaper) {
+    if (!haiPaperExists) {
       throw new NotFoundException('존재하지 않는 휴먼과 논문입니다!');
     }
 
@@ -264,8 +265,9 @@ export class HaiPapersService {
     const haiPaperActivityLogRepository =
       qr.manager.getRepository<HaiPaperActivityLog>(HaiPaperActivityLog);
 
-    const haiPaper = await haipapersRepository.findOne({ where: { id } });
-    if (!haiPaper) {
+    // 존재 여부만 확인하면 되므로 exists 사용(findOne이면 abstract까지 통째로 읽어온다)
+    const haiPaperExists = await haipapersRepository.exists({ where: { id } });
+    if (!haiPaperExists) {
       throw new NotFoundException('존재하지 않는 휴먼과 논문입니다!');
     }
 

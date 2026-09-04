@@ -255,13 +255,14 @@ export class PapersService {
     const paperbookmarksRepository =
       qr.manager.getRepository<PaperBookmark>(PaperBookmark);
 
-    const paper = await papersRepository.findOne({
+    // 존재 여부만 확인하면 되므로 exists 사용(findOne이면 abstract까지 통째로 읽어온다)
+    const paperExists = await papersRepository.exists({
       where: {
         arxivId,
       },
     });
 
-    if (!paper) {
+    if (!paperExists) {
       throw new NotFoundException('존재하지 않는 논문입니다!');
     }
 
@@ -333,8 +334,9 @@ export class PapersService {
     const readingActivityLogRepository =
       qr.manager.getRepository<ReadingActivityLog>(ReadingActivityLog);
 
-    const paper = await papersRepository.findOne({ where: { arxivId } });
-    if (!paper) {
+    // 존재 여부만 확인하면 되므로 exists 사용(findOne이면 abstract까지 통째로 읽어온다)
+    const paperExists = await papersRepository.exists({ where: { arxivId } });
+    if (!paperExists) {
       throw new NotFoundException('존재하지 않는 논문입니다!');
     }
 

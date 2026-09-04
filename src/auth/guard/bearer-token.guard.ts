@@ -7,8 +7,9 @@ import { IS_PUBLIC_KEY } from "src/common/decorator/is-public.decorator";
 @Injectable()
 export class BearerTokenGuard implements CanActivate{
     constructor(
-        private readonly authService: AuthService,
-        private readonly usersService: UsersService,
+        // RefreshTokenGuard가 자체 검증에 사용하므로 protected로 열어둔다
+        protected readonly authService: AuthService,
+        protected readonly usersService: UsersService,
         private readonly reflector: Reflector,
     ){}
 
@@ -90,19 +91,39 @@ export class AccessTokenGuard extends BearerTokenGuard {
 
 @Injectable()
 export class RefreshTokenGuard extends BearerTokenGuard {
+    // 주의: 여기서는 super.canActivate()를 타지 않는다.
+    // 토큰 재발급 라우트에 붙은 @IsPublic()은 "전역 AccessTokenGuard를 피한다"는 뜻일 뿐인데
+    // (그냥 두면 refresh 토큰을 들고 왔다고 'Access Token이 아니다'로 막힌다),
+    // 부모 가드는 isPublic이면 검증 없이 통과시켜 버려서 이 가드까지 같이 무력화된다.
+    // 그래서 부모를 거치지 않고 refresh 토큰을 직접 검증한다.
     async canActivate(context: ExecutionContext): Promise<boolean> {
-        await super.canActivate(context); 
-        
         const req = context.switchToHttp().getRequest();
-        
-        // 이 코드 추가!!
-        if(req.isRoutePublic){
-            return true;
+
+        const rawToken = req.headers['authorization'];
+
+        if(!rawToken){
+            throw new UnauthorizedException('로그인이 필요한 서비스입니다!');
         }
 
-        if(req.tokenType !== 'refresh'){
+        const token = this.authService.extractTokenFromHeader(rawToken);
+
+        const result = await this.authService.verifyToken(token); // 검증 성공 시 페이로드 반환
+
+        if(result.type !== 'refresh'){
             throw new UnauthorizedException('Refresh Token이 아닙니다.');
         }
+
+        // 탈퇴했거나 관리자가 삭제한 사용자를 걸러낸다.
+        // rotateToken()은 토큰 서명만 확인하고 DB는 보지 않으므로, 이 확인은 여기서만 할 수 있다.
+        const user = await this.usersService.getUserByEmail(result.email);
+
+        if(!user){
+            throw new UnauthorizedException('존재하지 않는 사용자입니다!');
+        }
+
+        req.user = user;
+        req.token = token;
+        req.tokenType = result.type;
 
         return true;
     }
