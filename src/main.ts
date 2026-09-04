@@ -9,7 +9,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const configService = app.get(ConfigService);
-  if (configService.get<string>(envVariableKeys.env) !== 'prod'){
+
+  // 개발 환경에서는 항상 열고, 배포 환경(prod)에서는 SWAGGER_ENABLED=true일 때만 연다.
+  // 주의: 배포에서 문서를 보려고 ENV를 dev로 바꾸면 안 된다.
+  //       ENV는 synchronize(운영 DB 스키마 자동 변경)와 ssl 설정도 함께 제어한다(app.module.ts 참고).
+  const isSwaggerEnabled =
+    configService.get<string>(envVariableKeys.env) !== 'prod' ||
+    String(configService.get(envVariableKeys.swaggerEnabled)) === 'true';
+
+  if (isSwaggerEnabled){
     // Swagger Documentation 만들기
     const config = new DocumentBuilder()
     .setTitle('Oneday Project') // Swagger Documentation의 이름
