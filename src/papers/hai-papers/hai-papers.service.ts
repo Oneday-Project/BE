@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, QueryRunner, Repository } from 'typeorm';
+import { In, QueryFailedError, QueryRunner, Repository } from 'typeorm';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
 import { UpdatHAIpaperDto } from './dto/update-hai-paper.dto';
 import { GetHaiPapersPaginationDto } from './dto/get-hai-papers-pagination.dto';
@@ -14,7 +14,6 @@ import { HaiPaperReadingStatus } from '../entities/hai-paper-reading-status.enti
 import { HaiPaperActivityLog } from '../entities/hai-paper-activity-log.entity';
 import { ReadingStatusEnum } from '../entities/paper-reading-status.entity';
 import { PapersService } from '../papers.service';
-import { UsersService } from 'src/users/users.service';
 import { CommonService } from 'src/common/common.service';
 
 @Injectable()
@@ -30,7 +29,6 @@ export class HaiPapersService {
     private readonly haiPaperReadingStatusRepository: Repository<HaiPaperReadingStatus>,
     @InjectRepository(HaiPaperActivityLog)
     private readonly haiPaperActivityLogRepository: Repository<HaiPaperActivityLog>,
-    private readonly usersService: UsersService,
     private readonly papersService: PapersService,
     private readonly commonService: CommonService,
   ) {}
@@ -214,26 +212,43 @@ export class HaiPapersService {
       throw new NotFoundException('존재하지 않는 휴먼과 논문입니다!');
     }
 
-    const user = await this.usersService.findUserById(userId);
-
     const bookmarkRecord = await haiPaperBookmarkRepository.findOne({
       where: { haiPaper: { id }, user: { id: userId } },
     });
 
     if (bookmarkRecord) {
-      await haiPaperBookmarkRepository.delete({
+      const deleteResult = await haiPaperBookmarkRepository.delete({
         haiPaper: { id },
         user: { id: userId },
       });
 
-      await haipapersRepository.decrement({ id }, 'bookmarkCount', 1);
+      // 동시에 들어온 중복 요청(더블클릭 등)이 이미 지웠다면 delete는 에러 없이 0건으로 끝난다.
+      // 그때도 decrement를 돌려버리면 카운트만 더 줄어들어 실제 북마크 수와 어긋나므로
+      // 실제로 지워졌을 때만 카운트를 내린다.
+      if (deleteResult.affected) {
+        await haipapersRepository.decrement({ id }, 'bookmarkCount', 1);
+      }
 
       return { isBookmark: false };
     } else {
-      await haiPaperBookmarkRepository.save({
-        haiPaper,
-        user,
-      });
+      try {
+        // 관계 객체 대신 PK 컬럼만 넣어 저장한다(엔티티에 haiPaperId/userId가 그대로 있음).
+        // 유저를 다시 조회할 필요가 없어져 북마크 토글에서 쿼리 하나가 통째로 빠진다.
+        // (유저 존재 여부는 AccessTokenGuard가 이미 확인했고, FK 제약이 최후 방어선이다)
+        await haiPaperBookmarkRepository.save({
+          haiPaperId: id,
+          userId,
+        });
+      } catch (e) {
+        // 동시에 들어온 중복 요청(더블클릭 등)이 한 발 먼저 넣었다면 PK 중복 에러가 난다.
+        // 충돌이 보인다는 건 상대 요청이 이미 커밋됐다는 뜻이므로,
+        // 사용자가 원한 결과("북마크 켜짐")는 이미 이뤄진 상태다. 500 대신 성공으로 응답한다.
+        // 카운트도 먼저 성공한 요청이 이미 올렸으므로 여기서 또 올리지 않는다.
+        if (this.isUniqueViolation(e)) {
+          return { isBookmark: true };
+        }
+        throw e;
+      }
 
       await haipapersRepository.increment({ id }, 'bookmarkCount', 1);
 
@@ -287,19 +302,29 @@ export class HaiPapersService {
     }
 
     // 안읽음 -> 읽는 중
-    await haiPaperReadingStatusRepository.save({
-      haiPaperId: id,
-      userId,
-      status: ReadingStatusEnum.READING,
-      startedAt: new Date(),
-      completedAt: null,
-    });
+    try {
+      await haiPaperReadingStatusRepository.save({
+        haiPaperId: id,
+        userId,
+        status: ReadingStatusEnum.READING,
+        startedAt: new Date(),
+        completedAt: null,
+      });
 
-    await haiPaperActivityLogRepository.save({
-      haiPaperId: id,
-      userId,
-      date: this.today(),
-    });
+      await haiPaperActivityLogRepository.save({
+        haiPaperId: id,
+        userId,
+        date: this.today(),
+      });
+    } catch (e) {
+      // 동시에 들어온 중복 요청(더블클릭 등)이 한 발 먼저 넣었다면 PK 중복 에러가 난다.
+      // 충돌이 보인다는 건 상대 요청이 이미 커밋됐다는 뜻이라 '읽는 중'은 이미 기록된 상태이고,
+      // 어차피 같은 값을 넣으려던 것이므로 500 대신 의도한 결과를 그대로 응답한다.
+      if (this.isUniqueViolation(e)) {
+        return { status: 'reading' };
+      }
+      throw e;
+    }
 
     return { status: 'reading' };
   }
@@ -375,6 +400,17 @@ export class HaiPapersService {
   // '읽는 중' 상태가 30일 만료 기준을 넘겼는지 확인
   private isExpiredReading(status: HaiPaperReadingStatus): boolean {
     return Date.now() - status.startedAt.getTime() > this.READING_EXPIRY_MS;
+  }
+
+  // 고유키(PK/unique) 중복 위반인지 확인 — 동시에 들어온 중복 요청이
+  // 같은 행을 두 번 넣으려 할 때 PostgreSQL이 23505 코드로 알려준다
+  private isUniqueViolation(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const driverError = error.driverError as { code?: string };
+    return driverError?.code === '23505';
   }
 
   // 오늘 날짜 활동 로그 upsert(이미 있으면 무시)

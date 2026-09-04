@@ -66,11 +66,6 @@ export class UsersService {
       where: {
         id,
       },
-      relations: {
-        bookmarkPapers: {
-          paper: true,
-        },
-      },
     });
 
     if (!user) {

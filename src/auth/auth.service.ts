@@ -66,7 +66,7 @@ export class AuthService {
 
       // 만료될 때까지 얼마나 시간이 걸릴 건지(초(seconds) 단위)
       // refreshToken이나 accessToken이냐에 따라 만료기간을 다루게 둘 것임
-      expiresIn: isRefreshToken ? 3600 : 3600,
+      expiresIn: isRefreshToken ? 7200 : 3600,
     })
   }
 
@@ -122,8 +122,12 @@ export class AuthService {
       throw new UnauthorizedException('토큰 재발급은 Refresh 토큰으로만 가능합니다!');
     }
     
+    // 토큰 페이로드는 사용자 id를 sub라는 이름으로 담고 있는데(signToken 참고)
+    // signToken은 id를 받으므로, 그대로 펼쳐 넘기면 id가 undefined가 되어
+    // 재발급된 토큰에서 sub가 사라진다. 그래서 sub -> id로 되돌려서 넘긴다.
     return this.signToken({
-      ...decoded,
+      email: decoded.email,
+      id: decoded.sub,
       }, isRefreshToken); // isRefreshToken - true면 refresh토큰 발급, false면 access토큰 발급
 
   }
