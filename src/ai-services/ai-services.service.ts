@@ -175,22 +175,92 @@ export class AiServicesService {
         };
     }
 
-    // 논문 1건에 대해 GPT 요약을 생성하고 저장(존재 여부 검사는 호출부 책임)
+    // 논문 1건에 대해 GPT 요약을 생성하고 저장한다.
+    // 기존 요약이 있으면 그 행을 갱신한다 — 새 행을 insert하면
+    // OneToOne @JoinColumn이 paperId에 걸어둔 UNIQUE 제약에 막히기 때문.
+    // GPT 호출이 실패하면 여기서 예외가 나므로 기존 요약은 손상되지 않는다.
     private async summarizeAndSavePaper(paper: Paper, currentYear: number) {
         const result = await this.requestPaperAiSummary(paper, currentYear);
 
-        const paperAiSummary = this.paperAiSummaryRepository.create({
+        const existing = await this.paperAiSummaryRepository.findOne({
+            where: { paper: { arxivId: paper.arxivId } },
+        });
+
+        const fields = {
             whyRead: result.whyRead,
             abstractKor: result.abstractKor,
             what: result.what,
             how: result.how,
             impact: result.impact,
-            model: this.gptModel,
+            model: this.gptModel, // 어떤 모델로 만든 요약인지 갱신될 때마다 기록된다
             cardSummary: result.cardSummary,
-            paper,
-        });
+        };
+
+        // 갱신 시에도 paper를 명시적으로 넣어준다.
+        // existing은 관계를 로드하지 않고 조회했기 때문에, 넣지 않으면 TypeORM의
+        // 관계 처리에 맡기게 된다. 어차피 같은 논문이므로 명시하는 편이 안전하다.
+        const paperAiSummary = existing
+            ? Object.assign(existing, fields, { paper })
+            : this.paperAiSummaryRepository.create({ ...fields, paper });
 
         return this.paperAiSummaryRepository.save(paperAiSummary);
+    }
+
+    // 단일 논문 AI 요약 갱신(arxivId 기준). 요약이 없으면 새로 만든다.
+    async regeneratePaperAiSummary(arxivId: string) {
+        const paper = await this.papersRepository.findOne({ where: { arxivId } });
+
+        if (!paper) {
+            throw new NotFoundException('존재하지 않는 논문입니다!');
+        }
+
+        return this.summarizeAndSavePaper(paper, new Date().getFullYear());
+    }
+
+    // 모든 논문의 AI 요약을 다시 생성해 갱신한다(요약이 없던 논문은 새로 생성).
+    // 논문 수만큼 GPT를 호출하므로 비용/시간이 크다 — 관리자 전용.
+    async regenerateAllPaperAiSummaries(batchSize?: number) {
+        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
+
+        // 요약 유무와 무관하게 전체가 대상
+        const papers = await this.papersRepository.find();
+
+        if (papers.length === 0) {
+            return { total: 0, success: 0, failed: 0, batchSize: size, failedArxivIds: [] };
+        }
+
+        const currentYear = new Date().getFullYear();
+        let success = 0;
+        const failedArxivIds: string[] = [];
+
+        for (let i = 0; i < papers.length; i += size) {
+            const batch = papers.slice(i, i + size);
+
+            const results = await Promise.allSettled(
+                batch.map((paper) => this.summarizeAndSavePaper(paper, currentYear)),
+            );
+
+            results.forEach((res, idx) => {
+                if (res.status === 'fulfilled') {
+                    success++;
+                } else {
+                    failedArxivIds.push(batch[idx].arxivId);
+                }
+            });
+
+            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
+            if (i + size < papers.length) {
+                await this.sleep(1000);
+            }
+        }
+
+        return {
+            total: papers.length,
+            success,
+            failed: failedArxivIds.length,
+            batchSize: size,
+            failedArxivIds,
+        };
     }
 
     // GPT를 호출해 요약 JSON을 받아 파싱하여 반환
@@ -226,7 +296,15 @@ export class AiServicesService {
                     실험 결과 수치나 성과, 그리고 이 연구가 해당 분야의 후속 연구에 미친 실제 영향을 구체적으로 작성한다.
                 반드시 180~200자 사이로 작성한다.
 
-            - cardSummary: 이 논문을 반드시 80~100자 사이로 요약한다. 반드시 "~논문"으로 끝나야 한다.
+            - cardSummary: 논문 목록 카드에 한 줄로 노출되는 요약. 아래를 모두 지킨다.
+                이 논문이 무엇을 했는지(핵심 기여)만 담는다. 배경 설명이나 중요도 평가는 넣지 않는다.
+                공백 포함 80~100자의 한 문장으로 쓴다.
+                "~하는 논문", "~을 제안한 논문"처럼 '논문'으로 끝나는 명사구로 끝맺는다.
+                    예시: "적은 연산량으로 긴 문맥을 처리하는 상태공간 모델을 제안한 논문"
+                "본 논문은", "이 논문은", "이 연구에서는" 같은 도입구로 시작하지 않는다.
+                    (카드가 여러 개 나열되므로 첫머리가 겹치면 목록이 단조로워진다)
+                모델명·데이터셋명처럼 이 논문을 특정할 수 있는 고유명사가 있으면 하나는 남긴다.
+                abstractKor를 그대로 줄인 문장이 되지 않도록, 핵심 기여만 남겨 새로 쓴다.
         `; 
 
         const userPrompt = 
@@ -316,19 +394,144 @@ export class AiServicesService {
 
         const haiPaper = await this.haiPapersService.getHaiPaperById(id);
 
-        const result = await this.requestHaiPaperAiSummary(haiPaper, new Date().getFullYear());
+        return this.summarizeAndSaveHaiPaper(haiPaper, new Date().getFullYear());
+    }
 
-        const haiPaperAiSummary = this.haiPaperAiSummaryRepository.create({
+    // AI 요약이 없는 모든 휴먼과 논문에 대해 배치 단위로 요약 생성
+    // (generateAllPaperAiSummaries와 동일한 구조, HaiPaper 전용)
+    async generateAllHaiPaperAiSummaries(batchSize?: number) {
+        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
+
+        // aiSummary가 아직 없는 논문만 조회
+        const haiPapers = await this.haiPapersRepository
+            .createQueryBuilder('haiPaper')
+            .leftJoin('haiPaper.aiSummary', 'aiSummary')
+            .where('aiSummary.id IS NULL')
+            .getMany();
+
+        if (haiPapers.length === 0) {
+            return { total: 0, success: 0, failed: 0, batchSize: size, failedIds: [] };
+        }
+
+        const currentYear = new Date().getFullYear();
+        let success = 0;
+        const failedIds: number[] = [];
+
+        for (let i = 0; i < haiPapers.length; i += size) {
+            const batch = haiPapers.slice(i, i + size);
+
+            const results = await Promise.allSettled(
+                batch.map((haiPaper) => this.summarizeAndSaveHaiPaper(haiPaper, currentYear)),
+            );
+
+            results.forEach((res, idx) => {
+                if (res.status === 'fulfilled') {
+                    success++;
+                } else {
+                    failedIds.push(batch[idx].id);
+                }
+            });
+
+            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
+            if (i + size < haiPapers.length) {
+                await this.sleep(1000);
+            }
+        }
+
+        return {
+            total: haiPapers.length,
+            success,
+            failed: failedIds.length,
+            batchSize: size,
+            failedIds,
+        };
+    }
+
+    // 휴먼과 논문 1건에 대해 GPT 요약을 생성하고 저장한다.
+    // 기존 요약이 있으면 그 행을 갱신한다 — 새 행을 insert하면
+    // OneToOne @JoinColumn이 haiPaperId에 걸어둔 UNIQUE 제약에 막히기 때문.
+    // GPT 호출이 실패하면 여기서 예외가 나므로 기존 요약은 손상되지 않는다.
+    private async summarizeAndSaveHaiPaper(haiPaper: HaiPaper, currentYear: number) {
+        const result = await this.requestHaiPaperAiSummary(haiPaper, currentYear);
+
+        const existing = await this.haiPaperAiSummaryRepository.findOne({
+            where: { haiPaper: { id: haiPaper.id } },
+        });
+
+        const fields = {
             abstractKor: result.abstractKor,
             what: result.what,
             how: result.how,
             impact: result.impact,
             cardSummary: result.cardSummary,
-            model: this.gptModel,
-            haiPaper,
-        })
+            model: this.gptModel, // 어떤 모델로 만든 요약인지 갱신될 때마다 기록된다
+        };
+
+        // 갱신 시에도 haiPaper를 명시적으로 넣어준다.
+        // existing은 관계를 로드하지 않고 조회했기 때문에, 넣지 않으면 TypeORM의
+        // 관계 처리에 맡기게 된다. 어차피 같은 논문이므로 명시하는 편이 안전하다.
+        const haiPaperAiSummary = existing
+            ? Object.assign(existing, fields, { haiPaper })
+            : this.haiPaperAiSummaryRepository.create({ ...fields, haiPaper });
 
         return this.haiPaperAiSummaryRepository.save(haiPaperAiSummary);
+    }
+
+    // 단일 휴먼과 논문 AI 요약 갱신(id 기준). 요약이 없으면 새로 만든다.
+    async regenerateHaiPaperAiSummary(id: number) {
+        const haiPaper = await this.haiPapersRepository.findOne({ where: { id } });
+
+        if (!haiPaper) {
+            throw new NotFoundException('존재하지 않는 휴먼과 논문입니다!');
+        }
+
+        return this.summarizeAndSaveHaiPaper(haiPaper, new Date().getFullYear());
+    }
+
+    // 모든 휴먼과 논문의 AI 요약을 다시 생성해 갱신한다(요약이 없던 논문은 새로 생성).
+    // 논문 수만큼 GPT를 호출하므로 비용/시간이 크다 — 관리자 전용.
+    async regenerateAllHaiPaperAiSummaries(batchSize?: number) {
+        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
+
+        // 요약 유무와 무관하게 전체가 대상
+        const haiPapers = await this.haiPapersRepository.find();
+
+        if (haiPapers.length === 0) {
+            return { total: 0, success: 0, failed: 0, batchSize: size, failedIds: [] };
+        }
+
+        const currentYear = new Date().getFullYear();
+        let success = 0;
+        const failedIds: number[] = [];
+
+        for (let i = 0; i < haiPapers.length; i += size) {
+            const batch = haiPapers.slice(i, i + size);
+
+            const results = await Promise.allSettled(
+                batch.map((haiPaper) => this.summarizeAndSaveHaiPaper(haiPaper, currentYear)),
+            );
+
+            results.forEach((res, idx) => {
+                if (res.status === 'fulfilled') {
+                    success++;
+                } else {
+                    failedIds.push(batch[idx].id);
+                }
+            });
+
+            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
+            if (i + size < haiPapers.length) {
+                await this.sleep(1000);
+            }
+        }
+
+        return {
+            total: haiPapers.length,
+            success,
+            failed: failedIds.length,
+            batchSize: size,
+            failedIds,
+        };
     }
 
     // GPT를 호출해 휴먼과 논문 요약 JSON을 받아 파싱하여 반환
@@ -358,7 +561,15 @@ export class AiServicesService {
                     실험 결과 수치나 성과, 그리고 이 연구가 해당 분야의 후속 연구에 미친 실제 영향을 구체적으로 작성한다.
                 반드시 180~200자 사이로 작성한다.
             
-            - cardSummary: 이 논문을 반드시 80~100자 사이로 요약한다. 반드시 "~논문"으로 끝나야 한다.
+            - cardSummary: 논문 목록 카드에 한 줄로 노출되는 요약. 아래를 모두 지킨다.
+                이 논문이 무엇을 했는지(핵심 기여)만 담는다. 배경 설명이나 중요도 평가는 넣지 않는다.
+                공백 포함 80~100자의 한 문장으로 쓴다.
+                "~하는 논문", "~을 제안한 논문"처럼 '논문'으로 끝나는 명사구로 끝맺는다.
+                    예시: "적은 연산량으로 긴 문맥을 처리하는 상태공간 모델을 제안한 논문"
+                "본 논문은", "이 논문은", "이 연구에서는" 같은 도입구로 시작하지 않는다.
+                    (카드가 여러 개 나열되므로 첫머리가 겹치면 목록이 단조로워진다)
+                모델명·데이터셋명처럼 이 논문을 특정할 수 있는 고유명사가 있으면 하나는 남긴다.
+                abstractKor를 그대로 줄인 문장이 되지 않도록, 핵심 기여만 남겨 새로 쓴다.
         `;
 
         const userPrompt =
@@ -490,6 +701,54 @@ export class AiServicesService {
         await this.embedAndSaveHaiPaper(haiPaper);
 
         return { success: true };
+    }
+
+    // 임베딩이 없는 모든 휴먼과 논문에 대해 배치 단위로 임베딩 생성
+    // (generateAllPaperEmbeddings와 동일한 구조, HaiPaper 전용)
+    async generateAllHaiPaperEmbeddings(batchSize?: number) {
+        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
+
+        // embedding이 아직 없는 논문만 조회
+        const haiPapers = await this.haiPapersRepository.find({
+            where: { embedding: IsNull() },
+            select: { id: true, title: true, abstract: true },
+        });
+
+        if (haiPapers.length === 0) {
+            return { total: 0, success: 0, failed: 0, batchSize: size, failedIds: [] };
+        }
+
+        let success = 0;
+        const failedIds: number[] = [];
+
+        for (let i = 0; i < haiPapers.length; i += size) {
+            const batch = haiPapers.slice(i, i + size);
+
+            const results = await Promise.allSettled(
+                batch.map((haiPaper) => this.embedAndSaveHaiPaper(haiPaper)),
+            );
+
+            results.forEach((res, idx) => {
+                if (res.status === 'fulfilled') {
+                    success++;
+                } else {
+                    failedIds.push(batch[idx].id);
+                }
+            });
+
+            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
+            if (i + size < haiPapers.length) {
+                await this.sleep(1000);
+            }
+        }
+
+        return {
+            total: haiPapers.length,
+            success,
+            failed: failedIds.length,
+            batchSize: size,
+            failedIds,
+        };
     }
 
     // 휴먼과 논문 1건에 대해 임베딩 벡터를 생성하고 저장(존재 여부 검사는 호출부 책임)
