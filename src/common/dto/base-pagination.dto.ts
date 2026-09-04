@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { IsArray, IsInt, IsOptional, IsString } from "class-validator";
+import { IsArray, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class BasePaginationDto {
     @ApiPropertyOptional({
@@ -8,6 +8,7 @@ export class BasePaginationDto {
         example: 1, 
     })
     @IsInt()
+    @Min(1)
     @IsOptional()
     page?: number;
 
@@ -34,7 +35,13 @@ export class BasePaginationDto {
         description: '가져올 데이터 개수',
         example: 5, 
     })
+    // 상한이 없으면 비회원도 ?take=100000 한 번으로 전체를 통째로 긁어갈 수 있고
+    // (논문 목록은 공개 API다) 논문이 쌓일수록 서버 부하가 그대로 커진다.
+    // 하한이 없으면 음수 take가 LIMIT -1이 되어 500이 난다.
+    // 상한 100은 마이페이지 라이브러리 조회(GetLibraryDto)와 같은 기준으로 맞췄다.
     @IsInt()
+    @Min(1)
+    @Max(100)
     @IsOptional()
     take: number = 12;
 }

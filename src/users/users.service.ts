@@ -52,12 +52,10 @@ export class UsersService {
     return newUser;
   }
 
+  // 관리자용 전체 사용자 목록 - 프로필 정보만 조회
+  // (북마크까지 붙이면 사용자 수 × 각자의 북마크 수만큼 행이 불어난다)
   findAllUser() {
-    return this.userRepository.find({
-      relations: {
-        bookmarkPapers: true,
-      },
-    });
+    return this.userRepository.find();
   }
 
   // FK 조회/비밀번호 확인 등 내부용 - 관계 없이 가볍게 조회
