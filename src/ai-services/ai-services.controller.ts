@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { AiServicesService } from './ai-services.service';
 import { CreatePaperAiSummaryDTO } from './dto/create-paper-ai-summary.dto';
 import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiQuery } from '@nestjs/swagger';
@@ -59,6 +59,38 @@ export class AiServicesController {
     return this.aiServicesService.generatePaperAiSummary(arxivId);
   }
 
+  // 아래 :arxivId 라우트보다 반드시 먼저 선언해야 한다(순서가 바뀌면 'batch'가 arxivId로 잡힌다)
+  @Patch('papers/batch')
+  @ApiOperation({
+    description:
+      '모든 논문의 AI 요약을 다시 생성해 갱신하는 API(관리자 권한). ' +
+      '요약이 없던 논문은 새로 생성한다. 논문 수만큼 GPT를 호출하므로 비용에 주의',
+  })
+  @ApiQuery({
+    name: 'batchSize',
+    required: false,
+    example: 20,
+    description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  regenerateAllPaperAiSummaries(
+    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
+  ){
+    return this.aiServicesService.regenerateAllPaperAiSummaries(batchSize);
+  }
+
+  @Patch('papers/:arxivId')
+  @ApiOperation({
+    description:
+      'arxivId 기반 단일 논문 AI 요약을 다시 생성해 갱신하는 API(관리자 권한). 요약이 없으면 새로 생성한다',
+  })
+  @Roles(RolesEnum.ADMIN)
+  regeneratePaperAiSummary(
+    @Param('arxivId') arxivId: string,
+  ){
+    return this.aiServicesService.regeneratePaperAiSummary(arxivId);
+  }
+
 
   // 휴먼과 논문 AI 요약 파트
   @Get('hai-papers')
@@ -79,6 +111,42 @@ export class AiServicesController {
     return this.aiServicesService.getHaiPaperAiSummaryById(id);
   }
 
+  // 아래 :id 라우트들보다 반드시 먼저 선언해야 한다.
+  // 순서가 바뀌면 'batch'가 :id로 잡혀 ParseIntPipe에서 400이 난다.
+  @Post('hai-papers/batch')
+  @ApiOperation({
+    description: 'AI 요약이 없는 모든 휴먼과 논문에 대해 배치 단위로 AI 요약을 생성하는 API(관리자 권한)',
+  })
+  @ApiQuery({
+    name: 'batchSize',
+    required: false,
+    example: 20,
+    description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  generateAllHaiPaperAiSummaries(
+    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
+  ){
+    return this.aiServicesService.generateAllHaiPaperAiSummaries(batchSize);
+  }
+
+  @Post('hai-papers/batch/embedding')
+  @ApiOperation({
+    description: '임베딩이 없는 모든 휴먼과 논문에 대해 배치 단위로 임베딩 벡터를 생성하는 API(관리자 권한)',
+  })
+  @ApiQuery({
+    name: 'batchSize',
+    required: false,
+    example: 20,
+    description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  generateAllHaiPaperEmbeddings(
+    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
+  ){
+    return this.aiServicesService.generateAllHaiPaperEmbeddings(batchSize);
+  }
+
   @Post('hai-papers/:id')
   @ApiOperation({
     description: 'id 기반 휴먼과 단일 논문 AI 요약을 생성하는 API(관리자 권한)',
@@ -88,6 +156,38 @@ export class AiServicesController {
     @Param('id', ParseIntPipe) id: number,
   ){
     return this.aiServicesService.createHaiPaperAiSummary(id);
+  }
+
+  // 아래 :id 라우트보다 반드시 먼저 선언해야 한다(순서가 바뀌면 'batch'가 :id로 잡혀 400이 난다)
+  @Patch('hai-papers/batch')
+  @ApiOperation({
+    description:
+      '모든 휴먼과 논문의 AI 요약을 다시 생성해 갱신하는 API(관리자 권한). ' +
+      '요약이 없던 논문은 새로 생성한다. 논문 수만큼 GPT를 호출하므로 비용에 주의',
+  })
+  @ApiQuery({
+    name: 'batchSize',
+    required: false,
+    example: 20,
+    description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  regenerateAllHaiPaperAiSummaries(
+    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
+  ){
+    return this.aiServicesService.regenerateAllHaiPaperAiSummaries(batchSize);
+  }
+
+  @Patch('hai-papers/:id')
+  @ApiOperation({
+    description:
+      'id 기반 휴먼과 단일 논문 AI 요약을 다시 생성해 갱신하는 API(관리자 권한). 요약이 없으면 새로 생성한다',
+  })
+  @Roles(RolesEnum.ADMIN)
+  regenerateHaiPaperAiSummary(
+    @Param('id', ParseIntPipe) id: number,
+  ){
+    return this.aiServicesService.regenerateHaiPaperAiSummary(id);
   }
 
   @Post('papers/batch/embedding')
