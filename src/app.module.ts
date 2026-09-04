@@ -54,6 +54,8 @@ import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
         REFRESH_TOKEN_SECRET: Joi.string().required(),
         SEMANTIC_SCHOLAR_API_KEY: Joi.string().required(),
         OPENAI_API_KEY: Joi.string().required(),
+        // 배포 환경에서도 Swagger를 열고 싶을 때만 true로 준다(미지정 시 false)
+        SWAGGER_ENABLED: Joi.boolean().default(false),
       })
     }),
     TypeOrmModule.forRootAsync({ 
