@@ -95,6 +95,12 @@ export class CommonService {
             qb.andWhere(`(${orConditions.join(' OR ')})`, params);
         }
 
+        // 정렬 기준에 유니크한 컬럼이 없으면 마지막에 PK를 자동으로 덧붙인다.
+        // publishedDate/publishedYear처럼 값이 중복되는 컬럼만으로 커서를 만들면
+        // 같은 값을 가진 나머지 행들이 다음 페이지 조건(<)에서 통째로 걸러져
+        // 어느 페이지에서도 조회되지 않기 때문
+        order = this.withPrimaryKeyTiebreaker(qb, order);
+
         this.applyOrderToQb(qb, order);
 
         qb.take(take);
@@ -108,6 +114,40 @@ export class CommonService {
             nextCursor,
             hasNext: nextCursor !== null,   // 다음 페이지 존재 여부
         };
+    }
+
+    // 커서 정렬 기준의 맨 뒤에 PK(유니크 컬럼)를 덧붙여 "동점 누락"을 막는다.
+    // ex. order가 ['publishedDate_DESC'] 하나뿐이면 다음 페이지 조건이
+    //     (publishedDate < '2025-08-01') 하나로만 만들어져서
+    //     같은 날짜의 나머지 논문들이 전부 건너뛰어진다.
+    //     ['publishedDate_DESC', 'arxivId_DESC']가 되면 커서에 arxivId도 함께 담기므로
+    //     (publishedDate < :date) OR (publishedDate = :date AND arxivId < :arxivId)
+    //     형태가 되어 같은 날짜 안에서도 이어서 조회된다.
+    private withPrimaryKeyTiebreaker<T extends ObjectLiteral>(
+        qb: SelectQueryBuilder<T>,
+        order: string[],
+    ): string[] {
+        const mainAlias = qb.expressionMap.mainAlias;
+
+        // 엔티티가 아닌 대상(서브쿼리 등)이면 PK를 알 수 없으므로 그대로 둔다
+        if (!mainAlias?.hasMetadata) {
+            return order;
+        }
+
+        // 이미 정렬 기준에 들어있는 컬럼은 중복해서 넣지 않는다
+        const orderedColumns = new Set(
+            order.map((columnOrder) => columnOrder.slice(0, columnOrder.lastIndexOf('_'))),
+        );
+
+        // 방향은 마지막 정렬 기준을 따라간다(정렬 기준이 아예 없으면 최신순 의미로 DESC)
+        const direction = order[order.length - 1]?.endsWith('ASC') ? 'ASC' : 'DESC';
+
+        const tiebreakers = mainAlias.metadata.primaryColumns
+            .map((column) => column.propertyName)
+            .filter((propertyName) => !orderedColumns.has(propertyName))
+            .map((propertyName) => `${propertyName}_${direction}`);
+
+        return [...order, ...tiebreakers];
     }
 
     private generateNextCursor<T>(results: T[], order: string[]): string | null {
