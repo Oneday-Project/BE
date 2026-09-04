@@ -39,6 +39,7 @@ export class AiServicesController {
     example: 20,
     description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   generateAllPaperAiSummaries(
     @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
@@ -50,6 +51,7 @@ export class AiServicesController {
   @ApiOperation({
     description: 'arxivId 기반 단일 논문 AI 요약을 생성하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   generatePaperAiSummary(
     @Param('arxivId') arxivId: string,
@@ -72,6 +74,7 @@ export class AiServicesController {
     example: 20,
     description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   regenerateAllPaperAiSummaries(
     @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
@@ -84,6 +87,7 @@ export class AiServicesController {
     description:
       'arxivId 기반 단일 논문 AI 요약을 다시 생성해 갱신하는 API(관리자 권한). 요약이 없으면 새로 생성한다',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   regeneratePaperAiSummary(
     @Param('arxivId') arxivId: string,
@@ -123,6 +127,7 @@ export class AiServicesController {
     example: 20,
     description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   generateAllHaiPaperAiSummaries(
     @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
@@ -140,6 +145,7 @@ export class AiServicesController {
     example: 20,
     description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   generateAllHaiPaperEmbeddings(
     @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
@@ -151,6 +157,7 @@ export class AiServicesController {
   @ApiOperation({
     description: 'id 기반 휴먼과 단일 논문 AI 요약을 생성하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   createHaiPaperAiSummary(
     @Param('id', ParseIntPipe) id: number,
@@ -171,6 +178,7 @@ export class AiServicesController {
     example: 20,
     description: '한 번에 동시 처리할 논문 수(미입력 시 기본값 적용)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   regenerateAllHaiPaperAiSummaries(
     @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
@@ -183,6 +191,7 @@ export class AiServicesController {
     description:
       'id 기반 휴먼과 단일 논문 AI 요약을 다시 생성해 갱신하는 API(관리자 권한). 요약이 없으면 새로 생성한다',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   regenerateHaiPaperAiSummary(
     @Param('id', ParseIntPipe) id: number,
@@ -194,6 +203,7 @@ export class AiServicesController {
   @ApiOperation({
     description: '임베딩이 없는 모든 논문에 대해 배치 단위로 임베딩 벡터를 생성하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   generateAllPaperEmbeddings(
     @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
@@ -203,7 +213,7 @@ export class AiServicesController {
 
   @Post('papers/:arxivId/embedding')
   @ApiOperation({ description: '단일 논문에 GPT 임베딩 벡터 할당 API(관리자 권한)' })
-  @ApiExcludeEndpoint()
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   saveTestEmbedding(@Param('arxivId') arxivId: string) {
       return this.aiServicesService.generatePaperEmbedding(arxivId);
@@ -211,7 +221,7 @@ export class AiServicesController {
 
   @Post('hai-papers/:id/embedding')
   @ApiOperation({ description: '단일 휴먼과 논문에 GPT 임베딩 벡터 할당 API(관리자 권한)' })
-  @ApiExcludeEndpoint()
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   generateHaiPaperEmbedding(@Param('id', ParseIntPipe) id: number) {
       return this.aiServicesService.generateHaiPaperEmbedding(id);

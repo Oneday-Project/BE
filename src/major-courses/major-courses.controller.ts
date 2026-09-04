@@ -2,7 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/commo
 import { MajorCoursesService } from './major-courses.service';
 import { CreateMajorCourseDto } from './dto/create-major-course.dto';
 import { UpdateMajorCourseDto } from './dto/update-major-course.dto';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation } from '@nestjs/swagger';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 
@@ -30,6 +30,7 @@ export class MajorCoursesController {
   }
 
   @Post()
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: '휴먼과 전공과목을 생성하는 API(관리자 권한)', 
@@ -39,6 +40,7 @@ export class MajorCoursesController {
   }
 
   @Patch(':courseId')
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 수정하는 API(관리자 권한)', 
@@ -51,6 +53,7 @@ export class MajorCoursesController {
   }
 
   @Delete(':courseId')
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   @ApiOperation({
     description: 'courseId(과목 코드) 기반 휴먼과 전공과목을 삭제하는 API(관리자 권한)', 
