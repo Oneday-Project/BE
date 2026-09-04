@@ -3,7 +3,7 @@ import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from './const/roles.const';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation } from '@nestjs/swagger';
 import { User } from './decorator/user.decorator';
 @Controller('users')
 @ApiBearerAuth()
@@ -49,8 +49,9 @@ export class UsersController {
 
   @Patch(':userId')
   @ApiOperation({
-    description: 'userId 기반 단일 사용자 정보를 수정하는 API(관리자 권한)', 
+    description: 'userId 기반 단일 사용자 정보를 수정하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다(조회 2건만 남긴다)
   @Roles(RolesEnum.ADMIN)
   updateUserByAdmin(
     @Param('userId', ParseIntPipe) id: number, 
@@ -69,8 +70,9 @@ export class UsersController {
 
   @Delete(':userId')
   @ApiOperation({
-    description: 'userId 기반 단일 사용자 정보를 삭제하는 API(관리자 권한)', 
+    description: 'userId 기반 단일 사용자 정보를 삭제하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다(조회 2건만 남긴다)
   @Roles(RolesEnum.ADMIN)
   removeUserByAdmin(@Param('userId', ParseIntPipe) id: number) {
     return this.usersService.removeUser(id);

@@ -4,7 +4,7 @@ import { CreateResearchFieldDto } from './dto/create-research-field.dto';
 import { UpdateResearchFieldDto } from './dto/update-research-field.dto';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { RolesEnum } from 'src/users/const/roles.const';
-import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation } from '@nestjs/swagger';
 
 @Controller('research-fields')
 @ApiBearerAuth()
@@ -24,6 +24,7 @@ export class ResearchFieldsController {
   @ApiOperation({
     description: '연구분야를 생성하는 API(관리자 권한)', 
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   createResearchField(
     @Body() dto: CreateResearchFieldDto,
@@ -36,6 +37,7 @@ export class ResearchFieldsController {
   @ApiOperation({
     description: 'id 기반 단일 연구분야를 수정하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   updateResearchField(
     @Param('id', ParseIntPipe) id: number,

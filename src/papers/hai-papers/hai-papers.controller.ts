@@ -15,7 +15,7 @@ import { HaiPapersService } from './hai-papers.service';
 import { CreateHAIpaperDto } from './dto/create-hai-paper.dto';
 import { UpdatHAIpaperDto } from './dto/update-hai-paper.dto';
 import { GetHaiPapersPaginationDto } from './dto/get-hai-papers-pagination.dto';
-import { ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiExcludeEndpoint, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { Roles } from 'src/auth/decorator/roles.decorator';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
@@ -128,6 +128,7 @@ export class HaiPapersController {
   @ApiOperation({
     description: '휴먼과 논문 생성 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   createPaper(@Body() dto: CreateHAIpaperDto) {
     return this.haiPapersService.createHaiPaper(dto);
@@ -137,6 +138,7 @@ export class HaiPapersController {
   @ApiOperation({
     description: 'id 기반 단일 휴먼과 논문을 수정하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   updatePaper(
     @Param('id', ParseIntPipe) id: number,
@@ -149,6 +151,7 @@ export class HaiPapersController {
   @ApiOperation({
     description: 'id 기반 단일 휴먼과 논문을 삭제하는 API(관리자 권한)',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   deletePaper(@Param('id', ParseIntPipe) id: number) {
     return this.haiPapersService.deleteHaiPaper(id);

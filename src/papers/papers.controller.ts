@@ -132,6 +132,7 @@ export class PapersController {
   @ApiOperation({
     description: '기본 논문의 모든 저자들을 가져오는 API',
   })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
   getAllAuthors(
     @Query() dto: GetAuthorsPaginationDto,
