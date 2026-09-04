@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { PaperAiSummary } from './entities/paper-ai-summaries.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
@@ -15,6 +15,7 @@ import OpenAI from 'openai';
 @Injectable()
 export class AiServicesService {
     private readonly openai: OpenAI;
+    private readonly logger = new Logger(AiServicesService.name);
     private readonly gptModel = 'gpt-5.4-mini'; // 기본 논문 AI 요약에 사용하는 모델
     private readonly embeddingModel = 'text-embedding-3-large'; // 논문 임베딩 벡터 생성에 사용하는 모델
     private readonly defaultBatchSize = 20; // 배치 처리 시 한 번에 동시 처리할 논문 수
@@ -125,8 +126,7 @@ export class AiServicesService {
     }
 
     // AI 요약이 없는 모든 논문에 대해 배치 단위로 요약 생성
-    // - Promise.allSettled로 묶어서 한 건이 실패해도 나머지는 계속 진행
-    // - 배치 사이마다 짧게 대기하여 OpenAI rate limit 완화
+    // 실패한 건은 runInBatches가 하나씩 순차로 재시도하고, 그래도 실패하면 사유와 함께 반환한다
     async generateAllPaperAiSummaries(batchSize?: number) {
         const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
 
@@ -138,40 +138,25 @@ export class AiServicesService {
             .getMany();
 
         if (papers.length === 0) {
-            return { total: 0, success: 0, failed: 0, batchSize: size, failedArxivIds: [] };
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
         }
 
         const currentYear = new Date().getFullYear();
-        let success = 0;
-        const failedArxivIds: string[] = [];
 
-        for (let i = 0; i < papers.length; i += size) {
-            const batch = papers.slice(i, i + size);
-
-            const results = await Promise.allSettled(
-                batch.map((paper) => this.summarizeAndSavePaper(paper, currentYear)),
-            );
-
-            results.forEach((res, idx) => {
-                if (res.status === 'fulfilled') {
-                    success++;
-                } else {
-                    failedArxivIds.push(batch[idx].arxivId);
-                }
-            });
-
-            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
-            if (i + size < papers.length) {
-                await this.sleep(1000);
-            }
-        }
+        const { success, retried, failures } = await this.runInBatches(
+            papers,
+            size,
+            (paper) => paper.arxivId,
+            (paper) => this.summarizeAndSavePaper(paper, currentYear),
+        );
 
         return {
             total: papers.length,
             success,
-            failed: failedArxivIds.length,
+            retried, // 1차에 실패했다가 순차 재시도로 살아난 건수
+            failed: failures.length,
             batchSize: size,
-            failedArxivIds,
+            failures,
         };
     }
 
@@ -226,40 +211,25 @@ export class AiServicesService {
         const papers = await this.papersRepository.find();
 
         if (papers.length === 0) {
-            return { total: 0, success: 0, failed: 0, batchSize: size, failedArxivIds: [] };
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
         }
 
         const currentYear = new Date().getFullYear();
-        let success = 0;
-        const failedArxivIds: string[] = [];
 
-        for (let i = 0; i < papers.length; i += size) {
-            const batch = papers.slice(i, i + size);
-
-            const results = await Promise.allSettled(
-                batch.map((paper) => this.summarizeAndSavePaper(paper, currentYear)),
-            );
-
-            results.forEach((res, idx) => {
-                if (res.status === 'fulfilled') {
-                    success++;
-                } else {
-                    failedArxivIds.push(batch[idx].arxivId);
-                }
-            });
-
-            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
-            if (i + size < papers.length) {
-                await this.sleep(1000);
-            }
-        }
+        const { success, retried, failures } = await this.runInBatches(
+            papers,
+            size,
+            (paper) => paper.arxivId,
+            (paper) => this.summarizeAndSavePaper(paper, currentYear),
+        );
 
         return {
             total: papers.length,
             success,
-            failed: failedArxivIds.length,
+            retried, // 1차에 실패했다가 순차 재시도로 살아난 건수
+            failed: failures.length,
             batchSize: size,
-            failedArxivIds,
+            failures,
         };
     }
 
@@ -336,6 +306,78 @@ export class AiServicesService {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    // 배치 실행 공통 로직(요약/임베딩 배치 6종이 모두 이걸 쓴다).
+    // 1차: size개씩 동시에 처리한다.
+    // 2차: 1차에서 실패한 건만 하나씩 순차로 재시도한다.
+    //      동시 요청이 몰려서 나는 실패(OpenAI rate limit 등)는 이 단계에서 대부분 복구된다.
+    // 최종 실패는 반드시 사유까지 남긴다 — 사유를 버리면 어디서 막혔는지 알 방법이 없다.
+    private async runInBatches<T>(
+        items: T[],
+        size: number,
+        idOf: (item: T) => string | number,
+        run: (item: T) => Promise<unknown>,
+    ) {
+        let success = 0;
+        const toRetry: T[] = [];
+
+        // ── 1차: 동시 처리 ──────────────────────────────────────────────
+        for (let i = 0; i < items.length; i += size) {
+            const batch = items.slice(i, i + size);
+
+            const results = await Promise.allSettled(batch.map(run));
+
+            results.forEach((res, idx) => {
+                if (res.status === 'fulfilled') {
+                    success++;
+                } else {
+                    this.logger.warn(
+                        `[1차 실패] ${idOf(batch[idx])} — ${this.toErrorMessage(res.reason)}`,
+                    );
+                    toRetry.push(batch[idx]);
+                }
+            });
+
+            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
+            if (i + size < items.length) {
+                await this.sleep(1000);
+            }
+        }
+
+        // ── 2차: 실패분만 하나씩 순차 재시도 ─────────────────────────────
+        let retried = 0;
+        const failures: { id: string | number; reason: string }[] = [];
+
+        for (const item of toRetry) {
+            try {
+                await run(item);
+                success++;
+                retried++;
+            } catch (e) {
+                const reason = this.toErrorMessage(e);
+                this.logger.error(`[재시도 실패] ${idOf(item)} — ${reason}`);
+                failures.push({ id: idOf(item), reason });
+            }
+
+            await this.sleep(1000);
+        }
+
+        return { success, retried, failures };
+    }
+
+    // 실패 원인을 한 줄로 요약한다.
+    // OpenAI 에러는 message만으로는 구분이 안 되므로 status(429/400 등)와 code를 함께 남긴다.
+    private toErrorMessage(error: unknown): string {
+        if (error instanceof Error) {
+            const { status, code } = error as Error & { status?: number; code?: string };
+            return [status && `HTTP ${status}`, code && `code=${code}`, error.message]
+                .filter(Boolean)
+                .join(' | ')
+                .slice(0, 300);
+        }
+
+        return String(error).slice(0, 300);
+    }
+
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // 2. 휴먼과 논문 AI 요약 관련 코드
@@ -410,40 +452,25 @@ export class AiServicesService {
             .getMany();
 
         if (haiPapers.length === 0) {
-            return { total: 0, success: 0, failed: 0, batchSize: size, failedIds: [] };
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
         }
 
         const currentYear = new Date().getFullYear();
-        let success = 0;
-        const failedIds: number[] = [];
 
-        for (let i = 0; i < haiPapers.length; i += size) {
-            const batch = haiPapers.slice(i, i + size);
-
-            const results = await Promise.allSettled(
-                batch.map((haiPaper) => this.summarizeAndSaveHaiPaper(haiPaper, currentYear)),
-            );
-
-            results.forEach((res, idx) => {
-                if (res.status === 'fulfilled') {
-                    success++;
-                } else {
-                    failedIds.push(batch[idx].id);
-                }
-            });
-
-            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
-            if (i + size < haiPapers.length) {
-                await this.sleep(1000);
-            }
-        }
+        const { success, retried, failures } = await this.runInBatches(
+            haiPapers,
+            size,
+            (haiPaper) => haiPaper.id,
+            (haiPaper) => this.summarizeAndSaveHaiPaper(haiPaper, currentYear),
+        );
 
         return {
             total: haiPapers.length,
             success,
-            failed: failedIds.length,
+            retried, // 1차에 실패했다가 순차 재시도로 살아난 건수
+            failed: failures.length,
             batchSize: size,
-            failedIds,
+            failures,
         };
     }
 
@@ -497,40 +524,25 @@ export class AiServicesService {
         const haiPapers = await this.haiPapersRepository.find();
 
         if (haiPapers.length === 0) {
-            return { total: 0, success: 0, failed: 0, batchSize: size, failedIds: [] };
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
         }
 
         const currentYear = new Date().getFullYear();
-        let success = 0;
-        const failedIds: number[] = [];
 
-        for (let i = 0; i < haiPapers.length; i += size) {
-            const batch = haiPapers.slice(i, i + size);
-
-            const results = await Promise.allSettled(
-                batch.map((haiPaper) => this.summarizeAndSaveHaiPaper(haiPaper, currentYear)),
-            );
-
-            results.forEach((res, idx) => {
-                if (res.status === 'fulfilled') {
-                    success++;
-                } else {
-                    failedIds.push(batch[idx].id);
-                }
-            });
-
-            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
-            if (i + size < haiPapers.length) {
-                await this.sleep(1000);
-            }
-        }
+        const { success, retried, failures } = await this.runInBatches(
+            haiPapers,
+            size,
+            (haiPaper) => haiPaper.id,
+            (haiPaper) => this.summarizeAndSaveHaiPaper(haiPaper, currentYear),
+        );
 
         return {
             total: haiPapers.length,
             success,
-            failed: failedIds.length,
+            retried, // 1차에 실패했다가 순차 재시도로 살아난 건수
+            failed: failures.length,
             batchSize: size,
-            failedIds,
+            failures,
         };
     }
 
@@ -630,39 +642,23 @@ export class AiServicesService {
         });
 
         if (papers.length === 0) {
-            return { total: 0, success: 0, failed: 0, batchSize: size, failedArxivIds: [] };
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
         }
 
-        let success = 0;
-        const failedArxivIds: string[] = [];
-
-        for (let i = 0; i < papers.length; i += size) {
-            const batch = papers.slice(i, i + size);
-
-            const results = await Promise.allSettled(
-                batch.map((paper) => this.embedAndSavePaper(paper)),
-            );
-
-            results.forEach((res, idx) => {
-                if (res.status === 'fulfilled') {
-                    success++;
-                } else {
-                    failedArxivIds.push(batch[idx].arxivId);
-                }
-            });
-
-            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
-            if (i + size < papers.length) {
-                await this.sleep(1000);
-            }
-        }
+        const { success, retried, failures } = await this.runInBatches(
+            papers,
+            size,
+            (paper) => paper.arxivId,
+            (paper) => this.embedAndSavePaper(paper),
+        );
 
         return {
             total: papers.length,
             success,
-            failed: failedArxivIds.length,
+            retried, // 1차에 실패했다가 순차 재시도로 살아난 건수
+            failed: failures.length,
             batchSize: size,
-            failedArxivIds,
+            failures,
         };
     }
 
@@ -715,39 +711,23 @@ export class AiServicesService {
         });
 
         if (haiPapers.length === 0) {
-            return { total: 0, success: 0, failed: 0, batchSize: size, failedIds: [] };
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
         }
 
-        let success = 0;
-        const failedIds: number[] = [];
-
-        for (let i = 0; i < haiPapers.length; i += size) {
-            const batch = haiPapers.slice(i, i + size);
-
-            const results = await Promise.allSettled(
-                batch.map((haiPaper) => this.embedAndSaveHaiPaper(haiPaper)),
-            );
-
-            results.forEach((res, idx) => {
-                if (res.status === 'fulfilled') {
-                    success++;
-                } else {
-                    failedIds.push(batch[idx].id);
-                }
-            });
-
-            // 마지막 배치가 아니면 다음 배치 전에 잠깐 대기
-            if (i + size < haiPapers.length) {
-                await this.sleep(1000);
-            }
-        }
+        const { success, retried, failures } = await this.runInBatches(
+            haiPapers,
+            size,
+            (haiPaper) => haiPaper.id,
+            (haiPaper) => this.embedAndSaveHaiPaper(haiPaper),
+        );
 
         return {
             total: haiPapers.length,
             success,
-            failed: failedIds.length,
+            retried, // 1차에 실패했다가 순차 재시도로 살아난 건수
+            failed: failures.length,
             batchSize: size,
-            failedIds,
+            failures,
         };
     }
 
