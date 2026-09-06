@@ -61,6 +61,62 @@ export class BasicPapersController {
   }
 
 
+  @Get('fetch-top-cited')
+  @ApiOperation({
+    description:
+      '기간·분야를 지정해 arXiv에서 해당 논문을 모두 훑은 뒤, ' +
+      'Semantic Scholar 인용수 기준 상위 N편만 저장하는 API (ss, arxiv DB 동시에 저장)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  async fetchTopCited(
+    @Query('category') category: string = 'cs.CV',       // arXiv 분야 코드
+    @Query('startDate') startDate?: string,              // YYYYMMDD (예: 20260601)
+    @Query('endDate') endDate?: string,                  // YYYYMMDD (예: 20260630)
+    @Query('count', new ParseIntPipe({ optional: true })) count: number = 10,      // 저장할 상위 편수
+    // 훑을 최대 편수(안전장치). cs.CV 한 달이 3,300편 수준이라 한 달 조회는 기본값으로 커버된다.
+    // 이 값을 넘으면 일부만 훑으므로 응답의 truncated가 true가 된다.
+    @Query('maxScan', new ParseIntPipe({ optional: true })) maxScan: number = 5000,
+  ) {
+    if (!startDate || !endDate) {
+      throw new BadRequestException(
+        'startDate와 endDate는 필수입니다. (YYYYMMDD 형식, 예: startDate=20260601&endDate=20260630)',
+      );
+    }
+    return this.basicPapersService.fetchTopCited(category, startDate, endDate, count, maxScan);
+  }
+
+
+  @Get('fetch-monthly-picks')
+  @ApiOperation({
+    description:
+      '이달의 논문 — 지정한 연월에서 분야당 인용수 상위 N편을 뽑아 저장하는 API. ' +
+      'arXiv를 분야별로 나눠 돌지 않고 OR 검색으로 한 번에 훑어 절반 가까이 빠르다 (ss, arxiv DB 동시에 저장)',
+  })
+  @Roles(RolesEnum.ADMIN)
+  async fetchMonthlyPicks(
+    @Query('year', ParseIntPipe) year: number,      // 예: 2026
+    @Query('month', ParseIntPipe) month: number,    // 1~12
+    @Query('perCategory', new ParseIntPipe({ optional: true })) perCategory: number = 1,
+    // 미지정 시 research_field 테이블의 분야 전체가 대상 (예: 'cs.CV,cs.LG')
+    @Query('categories') categories?: string,
+    // 한 달 합집합이 12,000건 수준이라 기본값으로 충분하다. 넘으면 truncated=true
+    @Query('maxScan', new ParseIntPipe({ optional: true })) maxScan: number = 20000,
+  ) {
+    if (month < 1 || month > 12) {
+      throw new BadRequestException('month는 1~12 사이여야 합니다.');
+    }
+
+    const categoryList = categories
+      ?.split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
+
+    return this.basicPapersService.fetchMonthlyPicks(
+      year, month, perCategory, categoryList, maxScan,
+    );
+  }
+
+
   @Post('integrate')
   @ApiOperation({
     description: 'SS DB와 arxiv DB에 있는 논문을 Paper DB에 통합하는 API', 
