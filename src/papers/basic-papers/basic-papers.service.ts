@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RawArxiv } from '../entities/raw-arxiv.entity';
 import { RawSemanticScholar } from '../entities/raw-semantic-scholar.entity';
@@ -24,7 +30,12 @@ const ARXIV_API_BASE = 'https://export.arxiv.org/api/query'; // arXiv API 기본
 const ARXIV_MAX_RESULTS    = 50; // arXiv API 한 번 요청에 가져올 최대 논문 수
 const ARXIV_ID_BATCH_SIZE  = 100;  // arXiv id_list 요청 시 한 배치당 처리할 ID 수
 const SS2_BATCH_SIZE       = 200;  // Semantic Scholar 배치 요청 시 한 번에 보낼 최대 ID 수
-const REQUEST_DELAY_MS     = 1100; // API 요청 사이 대기 시간(ms) — Rate Limit 초과 방지
+// 요청 간격은 API마다 요구 조건이 다르므로 분리한다.
+const SS2_REQUEST_DELAY_MS   = 1100; // Semantic Scholar 요청 간격(ms)
+const ARXIV_REQUEST_DELAY_MS = 3000; // arXiv 요청 간격(ms) — 이용약관이 "3초에 1회 이하"를 요구한다.
+                                     // 1.1초로 돌리면 429가 나고, 그게 "결과 없음"처럼 보였던 적이 있다.
+const API_MAX_RETRY          = 3;    // 일시적 실패(429/5xx) 재시도 횟수
+const SS2_MAX_CONSECUTIVE_FAILURES = 3; // SS 배치가 연속 이만큼 실패하면 더 돌아도 소용없다고 보고 중단
 
 const SS2_FIELDS = [ // Semantic Scholar API에서 가져올 필드 목록 (수집용)
   'paperId',               // SS 고유 ID
@@ -116,18 +127,13 @@ export class BasicPapersService {
       url += `&sortBy=submittedDate&sortOrder=descending`; // 제출일 기준 내림차순 정렬
     }
 
-    const response = await fetch(url); // arXiv API에 HTTP GET 요청. API 요청 시 fetch()를 사용(fetch()는 JavaScript의 내장 HTTP 요청 함수)
+    const xmlText = await this.fetchArxivXml(url); // 429/5xx는 내부에서 재시도
 
-    // if (response.status === 429) {
-    //   await this.delay(30000); // 30초 대기
-    //   return this.fetchArxiv(category, start, sort, startDate, endDate);
-    // }
-
-    if (!response.ok) { // HTTP 상태코드가 200번대(성공)가 아니면 에러
-      throw new Error(`arXiv API 오류: ${response.status} ${response.statusText}`);
+    if (xmlText === null) {
+      throw new ServiceUnavailableException(
+        `arXiv 요청이 ${API_MAX_RETRY + 1}회 모두 실패했습니다(요청 한도 초과 가능성). 잠시 후 다시 시도해주세요.`,
+      );
     }
-
-    const xmlText = await response.text(); // 응답 본문을 XML 문자열로 읽기
     const parsed = await parseStringPromise(xmlText, { explicitArray: true }); // XML → JS 객체 변환 (모든 값을 배열로 파싱). ex. explicitArray: true → { title: ["논문 제목"] } -> 이렇게 모든 값을 무조건 배열로 감쌈
     const entries: any[] = parsed?.feed?.entry ?? []; // 파싱된 논문 항목 배열 추출 (없으면 빈 리스트)
     // parsed 형태 예시
@@ -254,7 +260,7 @@ export class BasicPapersService {
 
       if (!response.ok) { 
         if (i + SS2_BATCH_SIZE < toFetch.length){
-          await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 일정 시간 대기 후
+          await this.delay(SS2_REQUEST_DELAY_MS); // 마지막 배치가 아니면 일정 시간 대기 후
         } 
         continue; // 이 배치는 건너뛰고 다음 배치 진행
       }
@@ -311,7 +317,7 @@ export class BasicPapersService {
         totalSaved += uniquePapers.length; // 저장된 수 누적
       }
 
-      if (i + SS2_BATCH_SIZE < toFetch.length) await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 다음 요청 전 딜레이
+      if (i + SS2_BATCH_SIZE < toFetch.length) await this.delay(SS2_REQUEST_DELAY_MS); // 마지막 배치가 아니면 다음 요청 전 딜레이
     }
 
     return { total: allArxivIds.length, alreadyExists, saved: totalSaved, notFound: totalNotFound }; // 전체 처리 결과 반환
@@ -465,7 +471,7 @@ export class BasicPapersService {
       });
 
       if (!response.ok) {
-        if (i + SS2_BATCH_SIZE < missingSsIds.length) await this.delay(REQUEST_DELAY_MS);
+        if (i + SS2_BATCH_SIZE < missingSsIds.length) await this.delay(SS2_REQUEST_DELAY_MS);
         continue;
       }
 
@@ -476,7 +482,7 @@ export class BasicPapersService {
         newSsDataMap.set(arxivId, paper);
       });
 
-      if (i + SS2_BATCH_SIZE < missingSsIds.length) await this.delay(REQUEST_DELAY_MS);
+      if (i + SS2_BATCH_SIZE < missingSsIds.length) await this.delay(SS2_REQUEST_DELAY_MS);
     }
 
     // SS 새 데이터 DB 저장
@@ -512,6 +518,214 @@ export class BasicPapersService {
         influentialCitationCount: ssFromApi?.influentialCitationCount ?? ssFromDb?.influenceScore ?? null,
       };
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // 4-1. 기간 + 분야 지정 → 인용수 상위 N편만 수집
+  // ══════════════════════════════════════════════════════════════════
+
+  // arXiv → SS 순서로 도는 이유:
+  //   분야(cat:cs.CV)는 arXiv에만 있고, 인용수는 SS에만 있다.
+  //   SS를 먼저 검색하면 "인용수 상위 논문 중 우연히 그 분야인 것"이 되어
+  //   "그 분야 중 인용수 상위"를 보장하지 못한다.
+  //   그래서 해당 기간·분야의 모집단을 arXiv에서 통째로 받아 인용수를 채운 뒤 정렬한다.
+  async fetchTopCited(
+    category: string,   // arXiv 분야 코드 (예: cs.CV)
+    startDate: string,  // YYYYMMDD
+    endDate: string,    // YYYYMMDD
+    count: number,      // 저장할 상위 편수
+    maxScan: number,    // 안전장치: 훑을 최대 편수
+  ) {
+    // ── 1. arXiv에서 해당 분야·기간 논문을 자동 페이징으로 수집(파싱만) ──────
+    const { entries, totalFound } = await this.fetchArxivBySearchQuery(
+      `cat:${category} AND submittedDate:[${startDate} TO ${endDate}]`,
+      maxScan,
+    );
+
+    if (entries.length === 0) {
+      return { totalFound, scanned: 0, truncated: false, withCitation: 0, saved: 0, papers: [] };
+    }
+
+    // ── 2. SS batch로 인용수 조회 ─────────────────────────────────────────
+    const { map: ssMap, failedBatches } = await this.fetchSsByArxivIds(
+      entries.map((e) => e.arxivId),
+    );
+
+    // ── 3. 인용수 내림차순 정렬(동점이면 영향력 점수로 순위 결정) ────────────
+    // SS에 없는 논문은 인용수를 알 수 없으므로 순위 대상에서 제외한다
+    const ranked = entries
+      .map((entry) => ({ entry, ss: ssMap.get(entry.arxivId) }))
+      .filter((r) => !!r.ss)
+      .sort((a, b) => {
+        const byCitation = (b.ss.citationCount ?? 0) - (a.ss.citationCount ?? 0);
+        if (byCitation !== 0) return byCitation;
+        return (b.ss.influentialCitationCount ?? 0) - (a.ss.influentialCitationCount ?? 0);
+      });
+
+    // ── 4. 상위 count편만 raw 테이블에 저장 ────────────────────────────────
+    const top = ranked.slice(0, count);
+
+    const { saved: arxivSaved, alreadyExists: arxivAlreadyExists } =
+      await this.saveArxivEntries(top.map((r) => r.entry));
+
+    const ssRecords = top.map((r) => this.mapToPaper(r.ss, r.entry.arxivId));
+    const uniqueSs = [...new Map(ssRecords.map((r) => [r.ss2Id, r])).values()]; // ss2Id 중복 제거
+    if (uniqueSs.length > 0) {
+      await this.ss2Repository.upsert(uniqueSs, ['ss2Id']);
+    }
+
+    return {
+      totalFound,                                 // 조건에 맞는 arXiv 논문 전체 수
+      scanned: entries.length,                    // 실제로 훑은 수
+      truncated: totalFound > entries.length,     // maxScan에 걸려 일부만 훑었는지
+      withCitation: ranked.length,                // 그중 SS에서 인용수를 얻은 수(=순위 대상)
+      // 0이 아니면 그 배치(최대 200편)가 순위에서 빠졌다는 뜻 — 상위 N이 정확하지 않을 수 있다
+      ssFailedBatches: failedBatches,
+      saved: top.length,
+      arxivSaved,
+      arxivAlreadyExists,
+      papers: top.map((r) => ({
+        arxivId: r.entry.arxivId,
+        title: r.entry.title,
+        citationCount: r.ss.citationCount ?? 0,
+        influentialCitationCount: r.ss.influentialCitationCount ?? 0,
+      })),
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // 4-2. 이달의 논문 — 한 연월에서 분야당 인용수 상위 N편
+  // ══════════════════════════════════════════════════════════════════
+
+  // 분야를 하나씩 도는 대신 arXiv OR 검색으로 한 번에 훑는다.
+  // 논문 하나가 여러 분야에 걸쳐 있어서, 분야별로 따로 돌면 같은 논문을 몇 번씩 받게 된다.
+  // (2026-08 실측: 분야별 합계 20,881건 → 합집합 12,624건. arXiv 418페이지 → 253페이지)
+  // 각 논문이 자기 카테고리 목록을 들고 오므로 분야별 분류는 추가 호출 없이 코드에서 끝난다.
+  async fetchMonthlyPicks(
+    year: number,
+    month: number,
+    perCategory: number,
+    categories: string[] | undefined,
+    maxScan: number,
+  ) {
+    // ── 1. 대상 분야 결정 (미지정 시 research_field 테이블 전체) ────────────
+    // 이 테이블을 기준으로 삼아야 integrate 단계에서 분야 매핑에 실패해 버려지지 않는다
+    const targets = categories?.length
+      ? categories
+      : (await this.categoryRepository.find()).map((c) => c.name);
+
+    if (targets.length === 0) {
+      throw new BadRequestException(
+        '대상 분야가 없습니다. research_field 테이블을 확인하거나 categories 파라미터로 직접 지정해주세요.',
+      );
+    }
+
+    // ── 2. 해당 월의 날짜 범위 (월말 일수는 자동 계산) ───────────────────────
+    const lastDay = new Date(year, month, 0).getDate();
+    const mm = String(month).padStart(2, '0');
+    const startDate = `${year}${mm}01`;
+    const endDate   = `${year}${mm}${String(lastDay).padStart(2, '0')}`;
+
+    // ── 3. arXiv에서 전 분야 합집합을 한 번에 수집 ──────────────────────────
+    const searchQuery =
+      `(${targets.map((c) => `cat:${c}`).join(' OR ')}) ` +
+      `AND submittedDate:[${startDate} TO ${endDate}]`;
+
+    const { entries, totalFound } = await this.fetchArxivBySearchQuery(searchQuery, maxScan);
+
+    if (entries.length === 0) {
+      return {
+        year, month, startDate, endDate,
+        targetCategories: targets, totalFound, scanned: 0, truncated: false,
+        withCitation: 0, excludedAsRepost: 0, candidates: 0,
+        ssFailedBatches: 0, saved: 0, picks: [],
+      };
+    }
+
+    // ── 4. 인용수 조회 (합집합에 대해 한 번만) ───────────────────────────────
+    const { map: ssMap, failedBatches } = await this.fetchSsByArxivIds(
+      entries.map((e) => e.arxivId),
+    );
+
+    // SS에 없는 논문은 인용수를 알 수 없어 순위 대상에서 제외
+    const withCitation = entries
+      .map((entry) => ({ entry, ss: ssMap.get(entry.arxivId) }))
+      .filter((r) => !!r.ss);
+
+    // ── 5. 그 달에 실제로 나온 논문만 남긴다 ────────────────────────────────
+    // arXiv 제출일만 보면, 예전에 발표돼 인용이 쌓인 논문이 이 달에 재업로드된 경우가 섞인다.
+    // 그런 논문은 인용수가 수백~수천이라 갓 나온 논문(보통 0~5회)을 항상 이겨서
+    // "최신 논문을 보여준다"는 취지가 무너진다. 그래서 SS 출간연월이 다르면 후보에서 뺀다.
+    // SS에 날짜가 없는 논문은 arXiv 제출일로 이 달이 이미 보장되므로 통과시킨다.
+    const yearMonth = `${year}-${mm}`;
+    const isPublishedThisMonth = (ss: any) => {
+      if (ss.publicationDate) return String(ss.publicationDate).startsWith(yearMonth);
+      if (ss.year != null) return Number(ss.year) === year;
+      return true;
+    };
+
+    // ── 6. 인용수 내림차순 정렬(동점이면 영향력 점수) ────────────────────────
+    const ranked = withCitation
+      .filter((r) => isPublishedThisMonth(r.ss))
+      .sort((a, b) => {
+        const byCitation = (b.ss.citationCount ?? 0) - (a.ss.citationCount ?? 0);
+        if (byCitation !== 0) return byCitation;
+        return (b.ss.influentialCitationCount ?? 0) - (a.ss.influentialCitationCount ?? 0);
+      });
+
+    const excludedAsRepost = withCitation.length - ranked.length;
+
+    // ── 7. 분야별로 나눠 상위 perCategory편 선정 ─────────────────────────────
+    // ranked가 이미 인용수 순이라 분야로 걸러내기만 하면 순서가 유지된다.
+    // 한 논문이 여러 분야의 1위가 될 수 있는데(교차 등록), paper의 PK가 arxivId라
+    // DB에는 한 행만 들어가고 그 논문의 분야가 전부 연결된다.
+    const chosen = new Map<string, { entry: ArxivParsed; ss: any }>();
+
+    const picks = targets.map((category) => {
+      const top = ranked
+        .filter((r) => r.entry.categories.includes(category))
+        .slice(0, perCategory);
+
+      top.forEach((r) => chosen.set(r.entry.arxivId, r));
+
+      return {
+        category,
+        papers: top.map((r) => ({
+          arxivId: r.entry.arxivId,
+          title: r.entry.title,
+          citationCount: r.ss.citationCount ?? 0,
+          influentialCitationCount: r.ss.influentialCitationCount ?? 0,
+        })),
+      };
+    });
+
+    // ── 8. 선정된 논문만 raw 테이블에 저장 ───────────────────────────────────
+    const selected = [...chosen.values()];
+
+    const { saved: arxivSaved, alreadyExists: arxivAlreadyExists } =
+      await this.saveArxivEntries(selected.map((r) => r.entry));
+
+    const ssRecords = selected.map((r) => this.mapToPaper(r.ss, r.entry.arxivId));
+    const uniqueSs = [...new Map(ssRecords.map((r) => [r.ss2Id, r])).values()];
+    if (uniqueSs.length > 0) {
+      await this.ss2Repository.upsert(uniqueSs, ['ss2Id']);
+    }
+
+    return {
+      year, month, startDate, endDate,
+      targetCategories: targets,
+      totalFound,                                 // 조건에 맞는 arXiv 논문 전체(합집합)
+      scanned: entries.length,
+      truncated: totalFound > entries.length,     // maxScan에 걸려 일부만 훑었는지
+      withCitation: withCitation.length,          // SS에서 인용수를 얻은 수
+      excludedAsRepost,                           // 그중 예전 논문의 재업로드로 판단해 제외한 수
+      candidates: ranked.length,                  // 실제 순위 대상 (withCitation - excludedAsRepost)
+      ssFailedBatches: failedBatches,             // 0이 아니면 순위가 정확하지 않을 수 있음
+      saved: selected.length,                     // 중복 제거 후 실제 저장 논문 수
+      arxivSaved,
+      arxivAlreadyExists,
+      picks,                                      // 분야별 선정 결과
+    };
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -721,7 +935,7 @@ export class BasicPapersService {
       });
 
       if (!response.ok) { // API 요청 실패 시
-        if (i + SS2_BATCH_SIZE < allArxivIds.length) await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이
+        if (i + SS2_BATCH_SIZE < allArxivIds.length) await this.delay(SS2_REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이
         continue; // 이 배치 건너뜀
       }
 
@@ -745,7 +959,7 @@ export class BasicPapersService {
 
       allChangedData.push(...changedData); // 모든 배치의 변경 데이터 누적
 
-      if (i + SS2_BATCH_SIZE < allArxivIds.length) await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이
+      if (i + SS2_BATCH_SIZE < allArxivIds.length) await this.delay(SS2_REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이
     }
 
     // ── 3. papers만 직접 갱신 (raw 테이블은 integrate() 후 비워지므로 불필요) ──
@@ -775,14 +989,13 @@ export class BasicPapersService {
       const batch = arxivIds.slice(i, i + ARXIV_ID_BATCH_SIZE); // 현재 배치의 arXiv ID 목록
       const url = `${ARXIV_API_BASE}?id_list=${batch.join(',')}&max_results=${batch.length}`; // ID 목록을 쉼표로 연결해 URL 구성
 
-      const res = await fetch(url); // arXiv API 요청
-      if (!res.ok) { // 요청 실패 시
-        if (i + ARXIV_ID_BATCH_SIZE < arxivIds.length) await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이 후
-        continue; // 이 배치 건너뜀
+      const xmlText = await this.fetchArxivXml(url); // 재시도 포함
+      if (xmlText === null) { // 재시도해도 실패하면 이 배치는 건너뜀
+        if (i + ARXIV_ID_BATCH_SIZE < arxivIds.length) await this.delay(ARXIV_REQUEST_DELAY_MS);
+        continue;
       }
 
       // fetchArxiv()와 거의 유사
-      const xmlText = await res.text(); // XML 응답 텍스트 읽기
       const parsed = await parseStringPromise(xmlText, { explicitArray: true }); // XML → JS 객체 변환. explicitArray: true - XML 태그를 파싱할 때 값을 항상 배열(Array) 형태로 만들어라
       const entries: any[] = parsed?.feed?.entry ?? []; // 논문 항목 추출
 
@@ -803,10 +1016,169 @@ export class BasicPapersService {
         result.push({ arxivId, title, authors, abstract, categories, pdfUrl: pdfLink.$.href }); // 파싱 결과를 배열에 추가
       }
 
-      if (i + ARXIV_ID_BATCH_SIZE < arxivIds.length) await this.delay(REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이
+      if (i + ARXIV_ID_BATCH_SIZE < arxivIds.length) await this.delay(ARXIV_REQUEST_DELAY_MS); // 마지막 배치가 아니면 딜레이
     }
 
     return result; // 파싱된 논문 배열 반환
+  }
+
+  // ── arXiv API 1회 호출 (429/5xx면 대기 시간을 늘려가며 재시도) ─────────────
+  // 실패를 그냥 넘기면 "요청이 거부됨"과 "조건에 맞는 논문이 없음"이 구분되지 않는다.
+  // 실제로 429를 흘려보내다 7월 논문이 0건이라고 잘못 판단한 적이 있어, 끝내 실패하면 null을 준다.
+  private async fetchArxivXml(url: string, maxRetry = API_MAX_RETRY): Promise<string | null> {
+    for (let attempt = 0; attempt <= maxRetry; attempt++) {
+      const res = await fetch(url);
+      if (res.ok) return res.text();
+
+      // 재시도 여력이 남았으면 점점 길게 대기 후 다시 시도
+      if (attempt < maxRetry) await this.delay(ARXIV_REQUEST_DELAY_MS * (attempt + 1));
+    }
+
+    return null;
+  }
+
+  // ── arXiv 응답의 entry 하나 → ArxivParsed (PDF 링크 없으면 null) ──────────
+  private parseArxivEntry(entry: any): ArxivParsed | null {
+    const idUrl: string = entry.id?.[0] ?? '';
+    const arxivId = idUrl.split('/').pop()?.replace(/v\d+$/, ''); // 버전(v2) 제거
+    if (!arxivId) return null;
+
+    const links: any[] = entry.link ?? [];
+    const pdfLink = links.find((l) => l.$?.type === 'application/pdf');
+    if (!pdfLink) return null;
+
+    return {
+      arxivId,
+      title:    (entry.title?.[0] ?? '').replace(/\s+/g, ' ').trim(),
+      authors:  (entry.author ?? []).map((a: any) => a.name?.[0] as string).filter(Boolean),
+      abstract: (entry.summary?.[0] ?? '').replace(/\s+/g, ' ').trim(),
+      categories: (entry.category ?? []).map((c: any) => c.$.term as string),
+      pdfUrl:   pdfLink.$.href,
+    };
+  }
+
+  // ── arXiv 검색을 자동 페이징으로 끝까지 훑는다(파싱만) ─────────────────────
+  // fetchArxiv()는 한 페이지(50건)만 가져오지만, 여기서는 상위 N편을 정확히 뽑기 위해
+  // 조건에 맞는 모집단 전체가 필요하므로 끝까지 넘긴다.
+  private async fetchArxivBySearchQuery(
+    searchQuery: string,
+    maxScan: number,
+  ): Promise<{ entries: ArxivParsed[]; totalFound: number }> {
+    const result: ArxivParsed[] = [];
+    const seen = new Set<string>(); // 페이지 경계에서 중복될 수 있어 arxivId로 걸러낸다
+    let totalFound = 0;
+
+    for (let start = 0; start < maxScan; start += ARXIV_MAX_RESULTS) {
+      const url =
+        `${ARXIV_API_BASE}?search_query=${encodeURIComponent(searchQuery)}` +
+        `&start=${start}&max_results=${ARXIV_MAX_RESULTS}` +
+        `&sortBy=submittedDate&sortOrder=descending`;
+
+      const xml = await this.fetchArxivXml(url);
+
+      // 여기서 멈추면 모집단 일부만 보고 순위를 매기게 되므로, 조용히 넘기지 않고 중단한다
+      if (xml === null) {
+        throw new ServiceUnavailableException(
+          `arXiv 요청이 ${API_MAX_RETRY + 1}회 모두 실패했습니다(요청 한도 초과 가능성). ` +
+          '잠시 후 다시 시도해주세요.',
+        );
+      }
+
+      const parsed = await parseStringPromise(xml, { explicitArray: true });
+
+      // 조건에 맞는 전체 건수 (첫 페이지에서만 읽으면 충분)
+      if (start === 0) {
+        const raw = parsed?.feed?.['opensearch:totalResults']?.[0];
+        totalFound = Number(typeof raw === 'object' ? raw?._ : raw) || 0;
+      }
+
+      const entries: any[] = parsed?.feed?.entry ?? [];
+      if (entries.length === 0) break; // 더 이상 결과 없음
+
+      for (const entry of entries) {
+        const parsedEntry = this.parseArxivEntry(entry);
+        if (!parsedEntry || seen.has(parsedEntry.arxivId)) continue;
+        seen.add(parsedEntry.arxivId);
+        result.push(parsedEntry);
+      }
+
+      if (entries.length < ARXIV_MAX_RESULTS) break; // 마지막 페이지
+      await this.delay(ARXIV_REQUEST_DELAY_MS);
+    }
+
+    return { entries: result, totalFound: totalFound || result.length };
+  }
+
+  // ── arxivId 목록 → SS 원본 데이터 Map (인용수 등) ──────────────────────────
+  // 배치가 통째로 실패하면 그 논문 200편이 순위 계산에서 빠져 "상위 N"이 틀어지므로,
+  // 조용히 건너뛰지 않는다. 연속 실패가 쌓이면 더 돌아봐야 소용없으므로 중단한다.
+  private async fetchSsByArxivIds(
+    arxivIds: string[],
+  ): Promise<{ map: Map<string, any>; failedBatches: number }> {
+    const SS2_API_KEY = this.configService.get<string>(envVariableKeys.semanticScholarApi) as string;
+    const map = new Map<string, any>();
+    let failedBatches = 0;
+    let consecutiveFailures = 0;
+
+    for (let i = 0; i < arxivIds.length; i += SS2_BATCH_SIZE) {
+      const batch = arxivIds.slice(i, i + SS2_BATCH_SIZE);
+      const data = await this.fetchSsBatch(batch, SS2_API_KEY); // 키 문제면 여기서 예외
+
+      if (data) {
+        data.forEach((paper, idx) => {
+          if (!paper) return; // SS에 등록되지 않은 논문
+          const arxivId = (paper.externalIds?.ArXiv as string | undefined) ?? batch[idx];
+          map.set(arxivId, paper);
+        });
+        consecutiveFailures = 0;
+      } else {
+        failedBatches++;
+        consecutiveFailures++;
+
+        if (consecutiveFailures >= SS2_MAX_CONSECUTIVE_FAILURES) {
+          throw new ServiceUnavailableException(
+            `Semantic Scholar 요청이 연속 ${consecutiveFailures}회 실패해 중단했습니다. ` +
+            '잠시 후 다시 시도해주세요.',
+          );
+        }
+      }
+
+      if (i + SS2_BATCH_SIZE < arxivIds.length) await this.delay(SS2_REQUEST_DELAY_MS);
+    }
+
+    return { map, failedBatches };
+  }
+
+  // ── SS batch 1회 호출 ─────────────────────────────────────────────────────
+  // 401/403은 키 문제라 재시도해도 절대 안 풀린다. 즉시 예외를 던져 전체를 멈춘다.
+  // (폐기된 키로 17개 배치를 5분간 재시도만 하다 빈 결과를 낸 적이 있다)
+  // 429/5xx는 일시적이므로 대기 시간을 늘려가며 재시도한다.
+  private async fetchSsBatch(
+    batch: string[],
+    apiKey: string,
+    maxRetry = 3,
+  ): Promise<(any | null)[] | null> {
+    for (let attempt = 0; attempt <= maxRetry; attempt++) {
+      const response = await fetch(`${SS2_BATCH_URL}?fields=${SS2_FIELDS}`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+        body:    JSON.stringify({ ids: batch.map((id) => `ArXiv:${id}`) }),
+      });
+
+      if (response.ok) return response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        throw new UnauthorizedException(
+          `Semantic Scholar API 키가 거부되었습니다(HTTP ${response.status}). ` +
+          'SEMANTIC_SCHOLAR_API_KEY 환경변수를 확인해주세요.',
+        );
+      }
+
+      // 재시도 여력이 남았으면 점점 길게 대기 후 다시 시도
+      if (attempt < maxRetry) await this.delay(SS2_REQUEST_DELAY_MS * (attempt + 2));
+    }
+
+    return null;
   }
 
   // ── ArxivParsed 배열 → raw_arxiv 저장 ────────────────────────────────────
@@ -857,7 +1229,7 @@ export class BasicPapersService {
       });
 
       if (!response.ok) {
-        if (i + SS2_BATCH_SIZE < arxivIds.length) await this.delay(REQUEST_DELAY_MS);
+        if (i + SS2_BATCH_SIZE < arxivIds.length) await this.delay(SS2_REQUEST_DELAY_MS);
         continue;
       }
 
@@ -873,7 +1245,7 @@ export class BasicPapersService {
         result.set(arxivId, authors);
       });
 
-      if (i + SS2_BATCH_SIZE < arxivIds.length) await this.delay(REQUEST_DELAY_MS);
+      if (i + SS2_BATCH_SIZE < arxivIds.length) await this.delay(SS2_REQUEST_DELAY_MS);
     }
 
     return result;
