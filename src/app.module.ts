@@ -36,6 +36,17 @@ import { HaiPaperAiSummary } from './ai-services/entities/hai-paper-ai-summaries
 import { RoadmapModule } from './roadmap/roadmap.module';
 import { RoadmapTask } from './roadmap/entities/roadmap-task.entity';
 import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
+import { BoardCategory } from './community/boards/entities/board-category.entity';
+import { Post } from './community/boards/entities/post.entity';
+import { Comment } from './community/boards/entities/comment.entity';
+import { PostLike } from './community/boards/entities/post-like.entity';
+import { CommentLike } from './community/boards/entities/comment-like.entity';
+import { BoardsModule } from './community/boards/boards.module';
+import { AlumniPost } from './community/alumni/entities/alumni-post.entity';
+import { AlumniComment } from './community/alumni/entities/alumni-comment.entity';
+import { AlumniPostLike } from './community/alumni/entities/alumni-post-like.entity';
+import { AlumniCommentLike } from './community/alumni/entities/alumni-comment-like.entity';
+import { AlumniModule } from './community/alumni/alumni.module';
 
 @Module({
   imports: [
@@ -85,6 +96,15 @@ import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
           HaiPaperBookmark,
           HaiPaperReadingStatus,
           HaiPaperActivityLog,
+          BoardCategory,
+          Post,
+          Comment,
+          PostLike,
+          CommentLike,
+          AlumniPost,
+          AlumniComment,
+          AlumniPostLike,
+          AlumniCommentLike,
         ],
         synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? false: true, 
         ssl: configService.get<string>(envVariableKeys.env) === 'prod'? { rejectUnauthorized: false } : false,
@@ -98,6 +118,8 @@ import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
     UsersModule,
     AuthModule, AiServicesModule, ResearchFieldsModule,
     RoadmapModule,
+    BoardsModule,
+    AlumniModule,
   ],
   controllers: [AppController],
   providers: [AppService,
