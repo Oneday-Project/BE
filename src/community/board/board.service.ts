@@ -215,7 +215,7 @@ export class BoardService {
   }
 
   async getPosts(dto: GetPostsPaginationDto) {
-    const { categoryId, keyword, sort } = dto;
+    const { categoryId, keyword } = dto;
 
     const qb = this.postQueryBuilder();
 
@@ -232,10 +232,8 @@ export class BoardService {
       );
     }
 
-    dto.order = sort === 'popular' ? ['likeCount_DESC'] : ['createdAt_DESC'];
-
-    // sort를 바꿨는데 이전 정렬 기준으로 만들어진 cursor를 그대로 들고 오면 cursorPagination이
-    // cursor에 인코딩된 order로 조용히 덮어써버려 방금 바꾼 sort가 무시된다.
+    // 정렬을 바꿨는데 이전 정렬 기준으로 만들어진 cursor를 그대로 들고 오면 cursorPagination이
+    // cursor에 인코딩된 order로 조용히 덮어써버려 방금 바꾼 정렬이 무시된다.
     // cursor의 정렬 기준이 지금 요청한 정렬과 다르면 그 cursor는 버리고 처음부터 다시 조회한다.
     if (dto.cursor && !this.cursorMatchesOrder(dto.cursor, dto.order)) {
       dto.cursor = undefined;

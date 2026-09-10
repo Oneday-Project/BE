@@ -106,12 +106,13 @@ export class ChatbotService {
 
 단, 입시 경쟁률·합격 커트라인·전형 일정·특정 교수님 연구실 근황처럼 "대학원 진학과 관련은 있지만 네가 정확한 최신 정보를 알 수 없는" 질문은 범위 밖이 아니다. 이 경우 위 문장으로 거절하지 말고, 정확한 수치나 최신 정보는 확실하지 않다고 먼저 밝힌 뒤 어디서 확인하면 되는지(공식 모집요강, 입학처 공지, 연구실 홈페이지 등)와 일반적으로 알려진 경향 정도만 조심스럽게 알려줘라.`;
 
-  // 검색을 건너뛴 질문에 붙이는 안내 — 목록이 "없음"으로 들어가면 모델이 "이 서비스에
-  // 자료가 하나도 없다"고 오해할 수 있어서, 검색을 안 했다는 사실을 명확히 알려준다.
+  // 검색을 건너뛰었거나(잡담) 검색이 실패한 질문에 붙이는 안내 — 목록이 "없음"으로 들어가면
+  // 모델이 "이 서비스에 자료가 하나도 없다"고 오해할 수 있어서, 자료가 제공되지 않았다는
+  // 사실만 알려준다.
   private readonly systemPromptWithoutSearch = `${this.systemPromptBase}
 
 [자료 목록]
-이번 질문은 자료를 찾아볼 필요가 없다고 판단해서 검색하지 않았다. 논문 제목이나 커뮤니티 글을 지어내지 말고 질문 자체에만 답해라.`;
+이번 질문에는 참고할 자료가 제공되지 않았다. 논문 제목이나 커뮤니티 글을 지어내지 말고 질문 자체에만 답해라. 자료가 없다는 내부 사정을 사용자에게 설명할 필요는 없다.`;
 
   // HyDE(Hypothetical Document Embeddings) — 질문을 그대로 임베딩하면 캐주얼한 질문 문장과
   // 격식체 논문 초록 간 유사도가 낮게 나온다(실측 0.25~0.35 수준). 그래서 질문을 바로 임베딩하는
@@ -158,9 +159,24 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     // 날씨 같은 잡담처럼 자료가 필요 없는 질문은 임베딩·검색을 아예 건너뛴다. 본문 5편이
     // 요청 토큰에서 가장 큰 부분이라 비용이 크고, 무관한 자료가 딸려 들어가면 억지 인용으로
     // 이어질 수도 있다.
-    const candidates = needsSearch
-      ? await this.searchCandidates(hypotheticalDoc, wantsBeginnerFriendly)
-      : [];
+    // 검색이 실패해도(임베딩 API 오류, DB 일시 장애) 대화를 끊지 않는다. 진학 상담처럼 자료
+    // 없이도 답할 수 있는 질문이 많으므로, 자료 없는 경로로 떨어뜨려 답변은 내보낸다.
+    let candidates: SimilarContentRow[] = [];
+    let searched = needsSearch;
+
+    if (needsSearch) {
+      try {
+        candidates = await this.searchCandidates(
+          hypotheticalDoc,
+          wantsBeginnerFriendly,
+        );
+      } catch (e) {
+        this.logger.warn(
+          `자료 검색 실패, 자료 없이 답변합니다: ${(e as Error).message}`,
+        );
+        searched = false;
+      }
+    }
 
     this.logger.log(
       `question="${dto.question}" needsSearch=${needsSearch} wantsBeginnerFriendly=${wantsBeginnerFriendly} hyde="${
@@ -177,7 +193,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
-        content: needsSearch
+        content: searched
           ? this.buildSystemPrompt(candidates)
           : this.systemPromptWithoutSearch,
       },
@@ -255,17 +271,31 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
   // 유사도만으로는 "관련은 있지만 지엽적인" 논문이 상위권을 차지할 수 있어, 인용수·발표년도로
   // 추정한 "그 분야에서 널리 알려진 정도(canonicalScore)"를 유사도와 절반씩 섞어 재정렬한다.
   // hai_paper처럼 발표년도가 없는 경우엔 ageScore를 중간값(0.5)으로 둔다.
+  //
+  // 이 보정은 논문에만 적용한다. 커뮤니티 글은 인용수 개념이 없어 canonicalScore가 늘 0에
+  // 수렴하는데, 같은 공식을 쓰면 유사도가 절반으로 깎여서 질문과 딱 맞는 글이 무관한 논문에
+  // 밀린다(실측: 유사도 0.611짜리 게시판 글이 0.27짜리 논문에 밀림). 그래서 커뮤니티 글은
+  // 유사도를 그대로 점수로 쓰고, 논문끼리만 대표성 보정을 받아 같은 무대에서 경쟁하게 한다.
   private rerankForFoundational(
     candidates: SimilarContentRow[],
   ): SimilarContentRow[] {
+    const isPaper = (c: SimilarContentRow) =>
+      c.type === 'arxiv' || c.type === 'hai';
+
     const maxCitation = Math.max(
-      ...candidates.map((c) => c.citationCount ?? 0),
+      ...candidates.filter(isPaper).map((c) => c.citationCount ?? 0),
       1,
     );
     const currentYear = new Date().getFullYear();
 
     return candidates
       .map((c) => {
+        const similarity = Number(c.similarity);
+
+        if (!isPaper(c)) {
+          return { ...c, rankScore: similarity };
+        }
+
         const citationScore = (c.citationCount ?? 0) / maxCitation;
 
         let ageScore = 0.5;
@@ -276,11 +306,10 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
         }
 
         const canonicalScore = citationScore * 0.6 + ageScore * 0.4;
-        const blendedScore = c.similarity * 0.5 + canonicalScore * 0.5;
 
-        return { ...c, blendedScore };
+        return { ...c, rankScore: similarity * 0.5 + canonicalScore * 0.5 };
       })
-      .sort((a, b) => b.blendedScore - a.blendedScore);
+      .sort((a, b) => b.rankScore - a.rankScore);
   }
 
   // 챗봇 전용 유사 콘텐츠 검색 — papers 모듈의 findSimilarByEmbedding과는 별개로,

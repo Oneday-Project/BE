@@ -54,4 +54,7 @@ export class BoardPost extends BaseModel {
 
   @Column({ type: 'text', nullable: true, select: false })
   embedding?: string; // 챗봇 검색용 임베딩 벡터 — 기본 비선택(프론트 응답에서 제외)
+
+  @Column({ nullable: true, select: false })
+  embeddingHash?: string; // 임베딩을 만들 때 넣은 텍스트의 해시 — 글이 바뀌었는데 임베딩이 옛것인지 판별용
 }

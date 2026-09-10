@@ -231,7 +231,7 @@ export class AiServicesController {
   // 실시간 생성이 실패한 글을 채우는 용도(백필)다.
   @Post('community/posts/batch/embedding')
   @ApiOperation({
-    description: '임베딩이 없는 모든 게시판 게시물에 대해 배치 단위로 임베딩 벡터를 생성하는 API(관리자 권한)',
+    description: '임베딩이 없거나 글 내용과 어긋난 게시판 게시물의 임베딩을 배치 단위로 생성/갱신하는 API(관리자 권한)',
   })
   @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
@@ -243,7 +243,7 @@ export class AiServicesController {
 
   @Post('community/alumni-posts/batch/embedding')
   @ApiOperation({
-    description: '임베딩이 없는 모든 선배 발자취 게시물에 대해 배치 단위로 임베딩 벡터를 생성하는 API(관리자 권한)',
+    description: '임베딩이 없거나 글 내용과 어긋난 선배 발자취 게시물의 임베딩을 배치 단위로 생성/갱신하는 API(관리자 권한)',
   })
   @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
   @Roles(RolesEnum.ADMIN)
