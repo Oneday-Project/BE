@@ -65,4 +65,7 @@ export class AlumniPost extends BaseModel {
 
   @OneToMany(() => AlumniPostLike, (like) => like.post)
   likes!: AlumniPostLike[];
+
+  @Column({ type: 'text', nullable: true, select: false })
+  embedding?: string; // 챗봇 검색용 임베딩 벡터 — 기본 비선택(프론트 응답에서 제외)
 }

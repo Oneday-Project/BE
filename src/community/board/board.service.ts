@@ -16,10 +16,10 @@ import {
 } from 'typeorm';
 import { CommonService } from 'src/common/common.service';
 import { BoardCategory } from './entities/board-category.entity';
-import { Post } from './entities/post.entity';
-import { Comment } from './entities/comment.entity';
-import { PostLike } from './entities/post-like.entity';
-import { CommentLike } from './entities/comment-like.entity';
+import { BoardPost } from './entities/board-post.entity';
+import { BoardComment } from './entities/board-comment.entity';
+import { BoardPostLike } from './entities/board-post-like.entity';
+import { BoardCommentLike } from './entities/board-comment-like.entity';
 import { CreateBoardCategoryDto } from './dto/create-board-category.dto';
 import { UpdateBoardCategoryDto } from './dto/update-board-category.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -29,21 +29,23 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { User } from 'src/users/entities/users.entity';
+import { AiServicesService } from 'src/ai-services/ai-services.service';
 
 @Injectable()
-export class BoardsService {
+export class BoardService {
   constructor(
     @InjectRepository(BoardCategory)
     private readonly boardCategoryRepository: Repository<BoardCategory>,
-    @InjectRepository(Post)
-    private readonly postRepository: Repository<Post>,
-    @InjectRepository(Comment)
-    private readonly commentRepository: Repository<Comment>,
-    @InjectRepository(PostLike)
-    private readonly postLikeRepository: Repository<PostLike>,
-    @InjectRepository(CommentLike)
-    private readonly commentLikeRepository: Repository<CommentLike>,
+    @InjectRepository(BoardPost)
+    private readonly postRepository: Repository<BoardPost>,
+    @InjectRepository(BoardComment)
+    private readonly commentRepository: Repository<BoardComment>,
+    @InjectRepository(BoardPostLike)
+    private readonly postLikeRepository: Repository<BoardPostLike>,
+    @InjectRepository(BoardCommentLike)
+    private readonly commentLikeRepository: Repository<BoardCommentLike>,
     private readonly commonService: CommonService,
+    private readonly aiServicesService: AiServicesService,
   ) {}
 
   // ===== 게시판 종류(카테고리) =====
@@ -100,7 +102,7 @@ export class BoardsService {
     }
 
     // 소속 게시물 존재 여부를 미리 조회해서 판단하면 그 사이에 게시물이 새로 생길 수 있다(TOCTOU).
-    // 그냥 삭제를 시도하고, FK 제약(Post.categoryId)에 걸리면 그때 안내 메시지로 변환한다.
+    // 그냥 삭제를 시도하고, FK 제약(BoardPost.categoryId)에 걸리면 그때 안내 메시지로 변환한다.
     try {
       await this.boardCategoryRepository.delete(id);
     } catch (e) {
@@ -132,6 +134,9 @@ export class BoardsService {
     });
 
     const saved = await this.postRepository.save(post);
+
+    // 챗봇이 이 글도 검색할 수 있게 임베딩을 만든다. 실패해도 글 작성은 그대로 성공한다.
+    await this.aiServicesService.syncPostEmbedding(saved.id);
 
     const created = await this.postQueryBuilder()
       .where('post.id = :id', { id: saved.id })
@@ -165,6 +170,11 @@ export class BoardsService {
 
     await this.postRepository.update(postId, dto);
 
+    // 제목·본문이 바뀐 경우에만 임베딩을 다시 만든다(카테고리만 바뀌면 검색 대상 내용은 그대로다).
+    if (dto.title !== undefined || dto.content !== undefined) {
+      await this.aiServicesService.syncPostEmbedding(postId);
+    }
+
     const updated = await this.postQueryBuilder()
       .where('post.id = :id', { id: postId })
       .getOne();
@@ -178,8 +188,9 @@ export class BoardsService {
     role: RolesEnum,
     qr: QueryRunner,
   ) {
-    const postRepository = qr.manager.getRepository<Post>(Post);
-    const commentRepository = qr.manager.getRepository<Comment>(Comment);
+    const postRepository = qr.manager.getRepository<BoardPost>(BoardPost);
+    const commentRepository =
+      qr.manager.getRepository<BoardComment>(BoardComment);
 
     const post = await postRepository.findOne({ where: { id: postId } });
 
@@ -193,7 +204,7 @@ export class BoardsService {
       );
     }
 
-    // Comment.parent가 RESTRICT라서(대댓글 있는 댓글은 하드 삭제 금지) Post -> Comment CASCADE에
+    // BoardComment.parent가 RESTRICT라서(대댓글 있는 댓글은 하드 삭제 금지) BoardPost -> BoardComment CASCADE에
     // 그냥 맡기면 삭제 순서에 따라 FK 위반이 날 수 있다. 대댓글을 먼저 지우고 댓글을 지운 뒤
     // 게시물을 지워서 순서를 직접 보장한다(좋아요는 CASCADE로 함께 삭제됨).
     await commentRepository.delete({ postId, parentId: Not(IsNull()) });
@@ -261,8 +272,9 @@ export class BoardsService {
   }
 
   async togglePostLike(userId: number, postId: number, qr: QueryRunner) {
-    const postRepository = qr.manager.getRepository<Post>(Post);
-    const postLikeRepository = qr.manager.getRepository<PostLike>(PostLike);
+    const postRepository = qr.manager.getRepository<BoardPost>(BoardPost);
+    const postLikeRepository =
+      qr.manager.getRepository<BoardPostLike>(BoardPostLike);
 
     const postExists = await postRepository.exists({ where: { id: postId } });
 
@@ -304,9 +316,10 @@ export class BoardsService {
   // ===== 댓글/대댓글 =====
 
   async toggleCommentLike(userId: number, commentId: number, qr: QueryRunner) {
-    const commentRepository = qr.manager.getRepository<Comment>(Comment);
+    const commentRepository =
+      qr.manager.getRepository<BoardComment>(BoardComment);
     const commentLikeRepository =
-      qr.manager.getRepository<CommentLike>(CommentLike);
+      qr.manager.getRepository<BoardCommentLike>(BoardCommentLike);
 
     const comment = await commentRepository.findOne({
       where: { id: commentId },

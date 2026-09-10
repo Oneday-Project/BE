@@ -8,6 +8,8 @@ import { HaiPaperAiSummary } from './entities/hai-paper-ai-summaries.entity';
 import { HaiPapersModule } from 'src/papers/hai-papers/hai-papers.module';
 import { HaiPaper } from 'src/papers/entities/hai-papers.entity';
 import { Paper } from 'src/papers/entities/papers.entity';
+import { BoardPost } from 'src/community/board/entities/board-post.entity';
+import { AlumniPost } from 'src/community/alumni/entities/alumni-post.entity';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { Paper } from 'src/papers/entities/papers.entity';
       HaiPaperAiSummary,
       Paper,
       HaiPaper,
+      BoardPost,
+      AlumniPost,
     ]),
     PapersModule,
     HaiPapersModule,
