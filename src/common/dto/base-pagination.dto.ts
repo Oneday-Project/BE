@@ -21,6 +21,11 @@ export class BasePaginationDto {
     // id_52, likeCount_20
     cursor?: string;
 
+    @ApiPropertyOptional({
+        description: '정렬 기준(예: ["id_DESC"], ["likeCount_DESC"]). 비우면 각 API의 기본 정렬을 따른다.',
+        example: ['id_DESC'],
+        type: [String],
+    })
     @IsArray()
     @IsString({
         each: true,
