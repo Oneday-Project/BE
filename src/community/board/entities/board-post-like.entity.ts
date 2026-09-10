@@ -1,15 +1,15 @@
 import { Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 import { BaseModel } from 'src/common/entities/base.entity';
 import { User } from 'src/users/entities/users.entity';
-import { Comment } from './comment.entity';
+import { BoardPost } from './board-post.entity';
 
 @Entity()
-export class CommentLike extends BaseModel {
+export class BoardPostLike extends BaseModel {
   @PrimaryColumn({
-    name: 'commentId',
+    name: 'postId',
     type: 'int',
   })
-  commentId!: number;
+  postId!: number;
 
   @PrimaryColumn({
     name: 'userId',
@@ -17,11 +17,11 @@ export class CommentLike extends BaseModel {
   })
   userId!: number;
 
-  @ManyToOne(() => Comment, (comment) => comment.likes, {
+  @ManyToOne(() => BoardPost, (post) => post.likes, {
     onDelete: 'CASCADE',
   })
-  @JoinColumn({ name: 'commentId' })
-  comment!: Comment;
+  @JoinColumn({ name: 'postId' })
+  post!: BoardPost;
 
   @ManyToOne(() => User, {
     onDelete: 'CASCADE',

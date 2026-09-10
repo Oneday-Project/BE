@@ -26,6 +26,7 @@ import { CreateAlumniCommentDto } from './dto/create-alumni-comment.dto';
 import { UpdateAlumniCommentDto } from './dto/update-alumni-comment.dto';
 import { RolesEnum } from 'src/users/const/roles.const';
 import { User } from 'src/users/entities/users.entity';
+import { AiServicesService } from 'src/ai-services/ai-services.service';
 
 @Injectable()
 export class AlumniService {
@@ -41,6 +42,7 @@ export class AlumniService {
     @InjectRepository(ResearchField)
     private readonly researchFieldRepository: Repository<ResearchField>,
     private readonly commonService: CommonService,
+    private readonly aiServicesService: AiServicesService,
   ) {}
 
   // ===== 게시물 =====
@@ -57,6 +59,9 @@ export class AlumniService {
     });
 
     const saved = await this.postRepository.save(post);
+
+    // 챗봇이 이 글도 검색할 수 있게 임베딩을 만든다. 실패해도 글 작성은 그대로 성공한다.
+    await this.aiServicesService.syncAlumniPostEmbedding(saved.id);
 
     const created = await this.postQueryBuilder()
       .where('post.id = :id', { id: saved.id })
@@ -94,6 +99,17 @@ export class AlumniService {
     Object.assign(post, rest);
 
     await this.postRepository.save(post);
+
+    // 임베딩에 넣는 값(제목·본문·진학한 대학원/학과·분야 태그)이 바뀐 경우에만 다시 만든다.
+    if (
+      rest.title !== undefined ||
+      rest.content !== undefined ||
+      rest.gradSchoolName !== undefined ||
+      rest.gradSchoolDept !== undefined ||
+      researchFieldIds
+    ) {
+      await this.aiServicesService.syncAlumniPostEmbedding(postId);
+    }
 
     const updated = await this.postQueryBuilder()
       .where('post.id = :id', { id: postId })

@@ -10,6 +10,8 @@ import { ConfigService } from '@nestjs/config';
 import { envVariableKeys } from 'src/common/const/env.const';
 import { Paper } from 'src/papers/entities/papers.entity';
 import { HaiPaper } from 'src/papers/entities/hai-papers.entity';
+import { BoardPost } from 'src/community/board/entities/board-post.entity';
+import { AlumniPost } from 'src/community/alumni/entities/alumni-post.entity';
 import OpenAI from 'openai';
 
 @Injectable()
@@ -29,6 +31,10 @@ export class AiServicesService {
         private readonly papersRepository: Repository<Paper>,
         @InjectRepository(HaiPaper)
         private readonly haiPapersRepository: Repository<HaiPaper>,
+        @InjectRepository(BoardPost)
+        private readonly postsRepository: Repository<BoardPost>,
+        @InjectRepository(AlumniPost)
+        private readonly alumniPostsRepository: Repository<AlumniPost>,
         private readonly papersService: PapersService,
         private readonly haiPapersService: HaiPapersService,
         private readonly configService: ConfigService,
@@ -746,6 +752,158 @@ export class AiServicesService {
             { id: haiPaper.id },
             { embedding: JSON.stringify(embedding) },
         );
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // 3-2. 커뮤니티 게시물 임베딩 (챗봇이 논문뿐 아니라 커뮤니티 글도 검색하기 위한 것)
+    // 논문과 달리 사용자가 그때그때 쓰는 글이라, 배치가 아니라 작성·수정 직후에 바로 생성한다.
+
+    // 게시물 1건의 임베딩을 생성/갱신한다. 임베딩 실패가 글쓰기 자체를 막으면 안 되므로
+    // 예외를 밖으로 던지지 않고 로그만 남긴다(누락분은 아래 백필 API로 채운다).
+    async syncPostEmbedding(postId: number) {
+        try {
+            const post = await this.postsRepository.findOne({
+                where: { id: postId },
+                select: { id: true, title: true, content: true },
+            });
+
+            if (!post) return;
+
+            await this.embedAndSavePost(post);
+        } catch (e) {
+            this.logger.warn(`게시물(${postId}) 임베딩 생성 실패 — ${this.toErrorMessage(e)}`);
+        }
+    }
+
+    // 선배 발자취 게시물 1건의 임베딩을 생성/갱신한다(실패 시 로그만 남기는 것도 동일).
+    async syncAlumniPostEmbedding(postId: number) {
+        try {
+            const post = await this.alumniPostsRepository.findOne({
+                where: { id: postId },
+                select: {
+                    id: true,
+                    title: true,
+                    content: true,
+                    gradSchoolName: true,
+                    gradSchoolDept: true,
+                    researchFields: { name: true },
+                },
+                relations: { researchFields: true },
+            });
+
+            if (!post) return;
+
+            await this.embedAndSaveAlumniPost(post);
+        } catch (e) {
+            this.logger.warn(`선배 발자취 게시물(${postId}) 임베딩 생성 실패 — ${this.toErrorMessage(e)}`);
+        }
+    }
+
+    // 임베딩이 아직 없는 게시물 전체 백필(임베딩 도입 이전에 작성된 글, 실시간 생성이 실패한 글용)
+    async generateAllPostEmbeddings(batchSize?: number) {
+        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
+
+        const posts = await this.postsRepository.find({
+            where: { embedding: IsNull() },
+            select: { id: true, title: true, content: true },
+        });
+
+        if (posts.length === 0) {
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
+        }
+
+        const { success, retried, failures } = await this.runInBatches(
+            posts,
+            size,
+            (post) => post.id,
+            (post) => this.embedAndSavePost(post),
+        );
+
+        return {
+            total: posts.length,
+            success,
+            retried,
+            failed: failures.length,
+            batchSize: size,
+            failures,
+        };
+    }
+
+    // 임베딩이 아직 없는 선배 발자취 게시물 전체 백필
+    async generateAllAlumniPostEmbeddings(batchSize?: number) {
+        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
+
+        const posts = await this.alumniPostsRepository.find({
+            where: { embedding: IsNull() },
+            select: {
+                id: true,
+                title: true,
+                content: true,
+                gradSchoolName: true,
+                gradSchoolDept: true,
+                researchFields: { name: true },
+            },
+            relations: { researchFields: true },
+        });
+
+        if (posts.length === 0) {
+            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
+        }
+
+        const { success, retried, failures } = await this.runInBatches(
+            posts,
+            size,
+            (post) => post.id,
+            (post) => this.embedAndSaveAlumniPost(post),
+        );
+
+        return {
+            total: posts.length,
+            success,
+            retried,
+            failed: failures.length,
+            batchSize: size,
+            failures,
+        };
+    }
+
+    private async embedAndSavePost(post: Pick<BoardPost, 'id' | 'title' | 'content'>) {
+        const embedding = await this.createEmbedding(`${post.title}\n\n${post.content}`);
+
+        await this.postsRepository.update({ id: post.id }, { embedding });
+    }
+
+    // 선배 발자취는 진학한 대학원·학과가 질문("선배들 어디 갔어?")의 핵심이라 본문과 함께 임베딩한다.
+    private async embedAndSaveAlumniPost(
+        post: Pick<
+            AlumniPost,
+            'id' | 'title' | 'content' | 'gradSchoolName' | 'gradSchoolDept' | 'researchFields'
+        >,
+    ) {
+        // 분야 태그는 "CV 쪽으로 간 선배 있어?" 같은 질문에서 본문에 그 단어가 없어도 매칭되게 해준다.
+        const fields = (post.researchFields ?? []).map((field) => field.name).join(', ');
+
+        const embedding = await this.createEmbedding(
+            [
+                post.title,
+                `진학: ${post.gradSchoolName ?? '비공개'} ${post.gradSchoolDept}`,
+                fields ? `연구 분야: ${fields}` : null,
+                post.content,
+            ]
+                .filter(Boolean)
+                .join('\n\n'),
+        );
+
+        await this.alumniPostsRepository.update({ id: post.id }, { embedding });
+    }
+
+    private async createEmbedding(input: string) {
+        const response = await this.openai.embeddings.create({
+            model: this.embeddingModel,
+            input,
+        });
+
+        return JSON.stringify(response.data[0].embedding);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////

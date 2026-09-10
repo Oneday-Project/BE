@@ -227,5 +227,31 @@ export class AiServicesController {
       return this.aiServicesService.generateHaiPaperEmbedding(id);
   }
 
+  // 게시물은 작성·수정 시 임베딩이 자동 생성되므로, 아래 두 API는 임베딩 도입 이전에 쓰인 글이나
+  // 실시간 생성이 실패한 글을 채우는 용도(백필)다.
+  @Post('community/posts/batch/embedding')
+  @ApiOperation({
+    description: '임베딩이 없는 모든 게시판 게시물에 대해 배치 단위로 임베딩 벡터를 생성하는 API(관리자 권한)',
+  })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
+  @Roles(RolesEnum.ADMIN)
+  generateAllPostEmbeddings(
+    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
+  ){
+    return this.aiServicesService.generateAllPostEmbeddings(batchSize);
+  }
+
+  @Post('community/alumni-posts/batch/embedding')
+  @ApiOperation({
+    description: '임베딩이 없는 모든 선배 발자취 게시물에 대해 배치 단위로 임베딩 벡터를 생성하는 API(관리자 권한)',
+  })
+  @ApiExcludeEndpoint() // 관리자 전용 — Swagger 문서에 노출하지 않는다
+  @Roles(RolesEnum.ADMIN)
+  generateAllAlumniPostEmbeddings(
+    @Query('batchSize', new ParseIntPipe({ optional: true })) batchSize?: number,
+  ){
+    return this.aiServicesService.generateAllAlumniPostEmbeddings(batchSize);
+  }
+
   
 }

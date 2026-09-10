@@ -16,7 +16,7 @@ import {
   ApiOperation,
 } from '@nestjs/swagger';
 import type { QueryRunner as QR } from 'typeorm';
-import { BoardsService } from './boards.service';
+import { BoardService } from './board.service';
 import { CreateBoardCategoryDto } from './dto/create-board-category.dto';
 import { UpdateBoardCategoryDto } from './dto/update-board-category.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -30,17 +30,17 @@ import { User } from 'src/users/decorator/user.decorator';
 import { TransactionInterceptor } from 'src/common/interceptor/transaction.interceptor';
 import { QueryRunner } from 'src/common/decorator/query-runner.decorator';
 
-@Controller('community/boards')
+@Controller('community/board')
 @ApiBearerAuth()
-export class BoardsController {
-  constructor(private readonly boardsService: BoardsService) {}
+export class BoardController {
+  constructor(private readonly boardService: BoardService) {}
 
   // ===== 게시판 종류(카테고리) =====
 
   @Get('categories')
   @ApiOperation({ description: '게시판 종류 목록을 가져오는 API' })
   getBoardCategories() {
-    return this.boardsService.getBoardCategories();
+    return this.boardService.getBoardCategories();
   }
 
   @Post('categories')
@@ -48,7 +48,7 @@ export class BoardsController {
   @ApiExcludeEndpoint()
   @Roles(RolesEnum.ADMIN)
   createBoardCategory(@Body() dto: CreateBoardCategoryDto) {
-    return this.boardsService.createBoardCategory(dto);
+    return this.boardService.createBoardCategory(dto);
   }
 
   @Patch('categories/:id')
@@ -61,7 +61,7 @@ export class BoardsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateBoardCategoryDto,
   ) {
-    return this.boardsService.updateBoardCategory(id, dto);
+    return this.boardService.updateBoardCategory(id, dto);
   }
 
   @Delete('categories/:id')
@@ -72,7 +72,7 @@ export class BoardsController {
   @ApiExcludeEndpoint()
   @Roles(RolesEnum.ADMIN)
   deleteBoardCategory(@Param('id', ParseIntPipe) id: number) {
-    return this.boardsService.deleteBoardCategory(id);
+    return this.boardService.deleteBoardCategory(id);
   }
 
   // ===== 게시물 =====
@@ -83,13 +83,13 @@ export class BoardsController {
       '게시물 목록을 가져오는 API(카테고리/키워드/정렬/페이지네이션)',
   })
   getPosts(@Query() dto: GetPostsPaginationDto) {
-    return this.boardsService.getPosts(dto);
+    return this.boardService.getPosts(dto);
   }
 
   @Post('posts')
   @ApiOperation({ description: '게시물을 작성하는 API' })
   createPost(@Body() dto: CreatePostDto, @User('id') userId: number) {
-    return this.boardsService.createPost(userId, dto);
+    return this.boardService.createPost(userId, dto);
   }
 
   @Get('posts/:id')
@@ -98,7 +98,7 @@ export class BoardsController {
     @Param('id', ParseIntPipe) id: number,
     @User('id') userId: number,
   ) {
-    return this.boardsService.getPostDetail(id, userId);
+    return this.boardService.getPostDetail(id, userId);
   }
 
   @Patch('posts/:id')
@@ -110,7 +110,7 @@ export class BoardsController {
     @Body() dto: UpdatePostDto,
     @User('id') userId: number,
   ) {
-    return this.boardsService.updatePost(userId, id, dto);
+    return this.boardService.updatePost(userId, id, dto);
   }
 
   @Delete('posts/:id')
@@ -125,7 +125,7 @@ export class BoardsController {
     @User('role') role: RolesEnum,
     @QueryRunner() qr: QR,
   ) {
-    return this.boardsService.deletePost(userId, id, role, qr);
+    return this.boardService.deletePost(userId, id, role, qr);
   }
 
   @Post('posts/:id/likeToggle')
@@ -136,7 +136,7 @@ export class BoardsController {
     @User('id') userId: number,
     @QueryRunner() qr: QR,
   ) {
-    return this.boardsService.togglePostLike(userId, id, qr);
+    return this.boardService.togglePostLike(userId, id, qr);
   }
 
   // ===== 댓글/대댓글 =====
@@ -147,7 +147,7 @@ export class BoardsController {
     @Param('postId', ParseIntPipe) postId: number,
     @User('id') userId: number,
   ) {
-    return this.boardsService.getComments(postId, userId);
+    return this.boardService.getComments(postId, userId);
   }
 
   @Post('posts/:postId/comments')
@@ -159,7 +159,7 @@ export class BoardsController {
     @Body() dto: CreateCommentDto,
     @User('id') userId: number,
   ) {
-    return this.boardsService.createComment(userId, postId, dto);
+    return this.boardService.createComment(userId, postId, dto);
   }
 
   @Patch('comments/:id')
@@ -169,7 +169,7 @@ export class BoardsController {
     @Body() dto: UpdateCommentDto,
     @User('id') userId: number,
   ) {
-    return this.boardsService.updateComment(userId, id, dto);
+    return this.boardService.updateComment(userId, id, dto);
   }
 
   @Delete('comments/:id')
@@ -182,7 +182,7 @@ export class BoardsController {
     @User('id') userId: number,
     @User('role') role: RolesEnum,
   ) {
-    return this.boardsService.deleteComment(userId, id, role);
+    return this.boardService.deleteComment(userId, id, role);
   }
 
   @Post('comments/:id/likeToggle')
@@ -193,6 +193,6 @@ export class BoardsController {
     @User('id') userId: number,
     @QueryRunner() qr: QR,
   ) {
-    return this.boardsService.toggleCommentLike(userId, id, qr);
+    return this.boardService.toggleCommentLike(userId, id, qr);
   }
 }

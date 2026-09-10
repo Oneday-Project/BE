@@ -9,11 +9,11 @@ import {
 import { BaseModel } from 'src/common/entities/base.entity';
 import { User } from 'src/users/entities/users.entity';
 import { BoardCategory } from './board-category.entity';
-import { Comment } from './comment.entity';
-import { PostLike } from './post-like.entity';
+import { BoardComment } from './board-comment.entity';
+import { BoardPostLike } from './board-post-like.entity';
 
 @Entity()
-export class Post extends BaseModel {
+export class BoardPost extends BaseModel {
   @PrimaryGeneratedColumn()
   id!: number;
 
@@ -46,9 +46,12 @@ export class Post extends BaseModel {
   })
   likeCount!: number; // 좋아요 수
 
-  @OneToMany(() => Comment, (comment) => comment.post)
-  comments!: Comment[];
+  @OneToMany(() => BoardComment, (comment) => comment.post)
+  comments!: BoardComment[];
 
-  @OneToMany(() => PostLike, (like) => like.post)
-  likes!: PostLike[];
+  @OneToMany(() => BoardPostLike, (like) => like.post)
+  likes!: BoardPostLike[];
+
+  @Column({ type: 'text', nullable: true, select: false })
+  embedding?: string; // 챗봇 검색용 임베딩 벡터 — 기본 비선택(프론트 응답에서 제외)
 }

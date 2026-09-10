@@ -36,17 +36,18 @@ import { HaiPaperAiSummary } from './ai-services/entities/hai-paper-ai-summaries
 import { RoadmapModule } from './roadmap/roadmap.module';
 import { RoadmapTask } from './roadmap/entities/roadmap-task.entity';
 import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
-import { BoardCategory } from './community/boards/entities/board-category.entity';
-import { Post } from './community/boards/entities/post.entity';
-import { Comment } from './community/boards/entities/comment.entity';
-import { PostLike } from './community/boards/entities/post-like.entity';
-import { CommentLike } from './community/boards/entities/comment-like.entity';
-import { BoardsModule } from './community/boards/boards.module';
+import { BoardCategory } from './community/board/entities/board-category.entity';
+import { BoardPost } from './community/board/entities/board-post.entity';
+import { BoardComment } from './community/board/entities/board-comment.entity';
+import { BoardPostLike } from './community/board/entities/board-post-like.entity';
+import { BoardCommentLike } from './community/board/entities/board-comment-like.entity';
+import { BoardModule } from './community/board/board.module';
 import { AlumniPost } from './community/alumni/entities/alumni-post.entity';
 import { AlumniComment } from './community/alumni/entities/alumni-comment.entity';
 import { AlumniPostLike } from './community/alumni/entities/alumni-post-like.entity';
 import { AlumniCommentLike } from './community/alumni/entities/alumni-comment-like.entity';
 import { AlumniModule } from './community/alumni/alumni.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -97,10 +98,10 @@ import { AlumniModule } from './community/alumni/alumni.module';
           HaiPaperReadingStatus,
           HaiPaperActivityLog,
           BoardCategory,
-          Post,
-          Comment,
-          PostLike,
-          CommentLike,
+          BoardPost,
+          BoardComment,
+          BoardPostLike,
+          BoardCommentLike,
           AlumniPost,
           AlumniComment,
           AlumniPostLike,
@@ -118,8 +119,9 @@ import { AlumniModule } from './community/alumni/alumni.module';
     UsersModule,
     AuthModule, AiServicesModule, ResearchFieldsModule,
     RoadmapModule,
-    BoardsModule,
+    BoardModule,
     AlumniModule,
+    ChatbotModule,
   ],
   controllers: [AppController],
   providers: [AppService,

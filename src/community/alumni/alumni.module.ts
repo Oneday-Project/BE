@@ -10,6 +10,7 @@ import { AlumniPost } from './entities/alumni-post.entity';
 import { AlumniComment } from './entities/alumni-comment.entity';
 import { AlumniPostLike } from './entities/alumni-post-like.entity';
 import { AlumniCommentLike } from './entities/alumni-comment-like.entity';
+import { AiServicesModule } from 'src/ai-services/ai-services.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AlumniCommentLike } from './entities/alumni-comment-like.entity';
     CommonModule,
     UsersModule,
     AuthModule,
+    AiServicesModule, // 게시물 작성·수정 시 챗봇 검색용 임베딩 생성
   ],
   controllers: [AlumniController],
   providers: [AlumniService],

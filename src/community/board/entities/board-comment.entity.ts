@@ -8,22 +8,22 @@ import {
 } from 'typeorm';
 import { BaseModel } from 'src/common/entities/base.entity';
 import { User } from 'src/users/entities/users.entity';
-import { Post } from './post.entity';
-import { CommentLike } from './comment-like.entity';
+import { BoardPost } from './board-post.entity';
+import { BoardCommentLike } from './board-comment-like.entity';
 
 @Entity()
-export class Comment extends BaseModel {
+export class BoardComment extends BaseModel {
   @PrimaryGeneratedColumn()
   id!: number;
 
   @Column()
   postId!: number;
 
-  @ManyToOne(() => Post, (post) => post.comments, {
+  @ManyToOne(() => BoardPost, (post) => post.comments, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'postId' })
-  post!: Post;
+  post!: BoardPost;
 
   @Column()
   authorId!: number;
@@ -44,15 +44,15 @@ export class Comment extends BaseModel {
   })
   parentId?: number; // null이면 최상위 댓글, 값이 있으면 대댓글(2단계까지만 허용 - 서비스 레벨에서 검증)
 
-  @ManyToOne(() => Comment, (comment) => comment.replies, {
+  @ManyToOne(() => BoardComment, (comment) => comment.replies, {
     nullable: true,
     onDelete: 'RESTRICT', // 대댓글이 남아있는 댓글은 하드 삭제 불가(항상 isDeleted 소프트 삭제로만 처리 - 에브리타임처럼 대댓글은 계속 남음)
   })
   @JoinColumn({ name: 'parentId' })
-  parent?: Comment;
+  parent?: BoardComment;
 
-  @OneToMany(() => Comment, (comment) => comment.parent)
-  replies!: Comment[]; // 이 댓글의 대댓글 리스트
+  @OneToMany(() => BoardComment, (comment) => comment.parent)
+  replies!: BoardComment[]; // 이 댓글의 대댓글 리스트
 
   @Column({
     default: false,
@@ -64,6 +64,6 @@ export class Comment extends BaseModel {
   })
   likeCount!: number; // 좋아요 수 비정규화 컬럼
 
-  @OneToMany(() => CommentLike, (like) => like.comment)
-  likes!: CommentLike[];
+  @OneToMany(() => BoardCommentLike, (like) => like.comment)
+  likes!: BoardCommentLike[];
 }
