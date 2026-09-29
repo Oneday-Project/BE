@@ -3,6 +3,8 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from 'src/users/users.module';
+import { SmuAuthClient } from './smu-auth.client';
+import { SmuLoginThrottleGuard } from './guard/smu-login-throttle.guard';
 
 @Module({
   imports: [
@@ -10,7 +12,7 @@ import { UsersModule } from 'src/users/users.module';
     UsersModule, 
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, SmuAuthClient, SmuLoginThrottleGuard],
   exports: [AuthService],
 })
 export class AuthModule {}

@@ -27,7 +27,8 @@ export class OptionalAuthGuard implements CanActivate {
         return true; // access 토큰이 아니면 게스트로 취급
       }
 
-      req.user = await this.usersService.getUserByEmail(result.email);
+      // 샘물 사용자는 email이 없을 수 있으므로 sub(사용자 id)로 찾는다.
+      req.user = await this.usersService.findUserByIdOrNull(result.sub);
     } catch {
       // 토큰이 잘못됐거나 만료됐어도 게스트로 통과(에러를 던지지 않음)
     }
