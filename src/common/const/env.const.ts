@@ -11,6 +11,9 @@ const refreshTokenSecret = 'REFRESH_TOKEN_SECRET';
 
 const semanticScholarApi = 'SEMANTIC_SCHOLAR_API_KEY';
 
+// 샘물(상명대 학교 계정) 인증 API 주소. 미설정 시 smu-auth.client.ts의 기본값을 쓴다.
+const smuAuthUrl = 'SMU_AUTH_URL';
+
 const openaiApiKey = 'OPENAI_API_KEY';
 
 // 배포 환경(ENV=prod)에서도 Swagger 문서를 열지 여부.
@@ -29,6 +32,7 @@ export const envVariableKeys = {
     accessTokenSecret,
     refreshTokenSecret,
     semanticScholarApi,
+    smuAuthUrl,
     openaiApiKey,
     swaggerEnabled,
 }

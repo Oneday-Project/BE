@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from 'src/users/users.service';
@@ -8,13 +8,16 @@ import { envVariableKeys } from 'src/common/const/env.const';
 import { LoginUserDto } from './dto/login-user.dto';
 import { User } from 'src/users/entities/users.entity';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { SmuLoginDto } from './dto/smu-login.dto';
+import { SmuAuthClient } from './smu-auth.client';
 
 @Injectable()
 export class AuthService {
   constructor (
     private readonly jwtService: JwtService,
-    private readonly usersService: UsersService, 
+    private readonly usersService: UsersService,
     private readonly configService: ConfigService,
+    private readonly smuAuthClient: SmuAuthClient,
   ){}
 
   async registerWithEmail(user: RegisterUserDto){
@@ -26,6 +29,36 @@ export class AuthService {
     const newUser = await this.usersService.createUser({
       ...user,
       password: hash,
+    });
+
+    return this.loginUser(newUser);
+  }
+
+  // 샘물(학교 계정) 로그인 — 기본 로그인 수단
+  // 1) 학교에 학번/비밀번호를 확인한다(비밀번호는 저장하지 않는다)
+  // 2) 학번으로 사용자를 찾는다. 없으면 자동 가입, 있으면 이름·학과를 최신 정보로 갱신
+  // 3) 이메일 로그인과 똑같은 형식의 토큰을 발급한다
+  async loginWithSmu(dto: SmuLoginDto){
+    const profile = await this.smuAuthClient.authenticate(dto.studentId, dto.password);
+
+    // 학번은 입력값이 아니라 학교가 알려준 값을 쓴다(입력에 공백 등이 섞여도 한 사람 = 한 계정이 된다).
+    const existingUser = await this.usersService.getUserByStudentId(profile.studentId);
+
+    if (existingUser) {
+      const user = await this.usersService.syncSmuProfile(existingUser.id, {
+        username: profile.name,
+        department: profile.department,
+        secondDepartment: profile.secondDepartment,
+      });
+
+      return this.loginUser(user);
+    }
+
+    const newUser = await this.usersService.createSmuUser({
+      studentId: profile.studentId,
+      username: profile.name,
+      department: profile.department,
+      secondDepartment: profile.secondDepartment,
     });
 
     return this.loginUser(newUser);
@@ -94,7 +127,13 @@ export class AuthService {
      */
     // users.password - 실제로 입력받은 비밀번호
     // existingUser.password - 해시로 저장돼있는 값
-    const passOk = existingUser 
+    // 샘물 계정은 비밀번호를 저장하지 않으므로(password가 null) 비교 자체가 불가능하다.
+    // bcrypt.compare에 null을 넘기면 에러가 나므로 여기서 먼저 걸러 안내한다.
+    if(existingUser && !existingUser.password){
+      throw new UnauthorizedException('학교 계정(샘물)으로 로그인해주세요.');
+    }
+
+    const passOk = existingUser?.password
       ? await bcrypt.compare(user.password, existingUser.password)
       : false
 
@@ -125,8 +164,9 @@ export class AuthService {
     // 토큰 페이로드는 사용자 id를 sub라는 이름으로 담고 있는데(signToken 참고)
     // signToken은 id를 받으므로, 그대로 펼쳐 넘기면 id가 undefined가 되어
     // 재발급된 토큰에서 sub가 사라진다. 그래서 sub -> id로 되돌려서 넘긴다.
+    // 샘물 계정은 email이 없으므로 페이로드의 email도 null일 수 있다(사용자 식별은 sub로 한다).
     return this.signToken({
-      email: decoded.email,
+      email: decoded.email ?? null,
       id: decoded.sub,
       }, isRefreshToken); // isRefreshToken - true면 refresh토큰 발급, false면 access토큰 발급
 
@@ -164,6 +204,13 @@ export class AuthService {
   // 비밀번호 변경
   async changePassword(userId: number, dto: ChangePasswordDto) {
     const user = await this.usersService.findUserById(userId);
+
+    // 샘물 계정은 학교 포털에서 인증하므로 우리 쪽에 바꿀 비밀번호가 없다.
+    if (!user.password) {
+      throw new BadRequestException(
+        '학교 계정(샘물)으로 로그인한 계정은 비밀번호를 변경할 수 없습니다. 학교 포털에서 변경해주세요.',
+      );
+    }
 
     // 현재 비밀번호가 맞는지 확인
     const passOk = await bcrypt.compare(dto.currentPassword, user.password);

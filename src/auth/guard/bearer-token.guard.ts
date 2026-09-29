@@ -54,7 +54,13 @@ export class BearerTokenGuard implements CanActivate{
          * 3) tokenType - access | refresh
          * 이 정보를 가지고 나중에 검증을 해야될 경우가 생길 수 있기 때문
          */
-        const user = await this.usersService.getUserByEmail(result.email);
+        // 샘물(학교 계정) 사용자는 email이 없을 수 있으므로 email이 아니라
+        // 페이로드의 sub(사용자 id)로 찾는다. 기존 토큰에도 sub는 들어 있어서 그대로 호환된다.
+        const user = await this.usersService.findUserByIdOrNull(result.sub);
+
+        if(!user){
+            throw new UnauthorizedException('존재하지 않는 사용자입니다!');
+        }
 
         req.user = user;
         req.token = token;
@@ -115,7 +121,7 @@ export class RefreshTokenGuard extends BearerTokenGuard {
 
         // 탈퇴했거나 관리자가 삭제한 사용자를 걸러낸다.
         // rotateToken()은 토큰 서명만 확인하고 DB는 보지 않으므로, 이 확인은 여기서만 할 수 있다.
-        const user = await this.usersService.getUserByEmail(result.email);
+        const user = await this.usersService.findUserByIdOrNull(result.sub);
 
         if(!user){
             throw new UnauthorizedException('존재하지 않는 사용자입니다!');

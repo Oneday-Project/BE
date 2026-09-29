@@ -4,6 +4,8 @@ import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { IsPublic } from 'src/common/decorator/is-public.decorator';
 import { RefreshTokenGuard } from './guard/bearer-token.guard';
+import { SmuLoginThrottleGuard } from './guard/smu-login-throttle.guard';
+import { SmuLoginDto } from './dto/smu-login.dto';
 import { ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { User } from 'src/users/decorator/user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -26,13 +28,28 @@ export class AuthController {
 
   @Post('login')
   @ApiOperation({
-    description: '로그인 API',
+    description: '이메일 로그인 API(샘물 로그인이 불가능할 때 쓰는 예비 수단)',
   })
   @IsPublic()
   loginUser(
     @Body() body: LoginUserDto,
   ){
     return this.authService.loginWithEmail(body);
+  }
+
+  @Post('smu/login')
+  @ApiOperation({
+    description:
+      '샘물(학교 계정) 로그인 API — 기본 로그인 수단. ' +
+      '학번과 학교 포털 비밀번호로 인증하며, 처음 로그인하면 자동으로 가입된다(닉네임 자동 생성). ' +
+      '비밀번호는 저장하지 않는다. 응답은 이메일 로그인과 동일(accessToken, refreshToken)',
+  })
+  @IsPublic()
+  @UseGuards(SmuLoginThrottleGuard)
+  loginWithSmu(
+    @Body() body: SmuLoginDto,
+  ){
+    return this.authService.loginWithSmu(body);
   }
 
   @Post('token/access') // access토큰 재발급
