@@ -33,7 +33,7 @@ lerna-debug.log*
 
 # IDE - VSCode
 .vscode/*
-!.vscode/settings.json
+# settings.json은 DB 접속 정보(host/port/username)가 들어갈 수 있어 공개 레포에 올리지 않는다.
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
