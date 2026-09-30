@@ -47,6 +47,17 @@ const TASK_PRIORITY_ORDER: Record<RoadmapPriority, number> = {
     low: 2,
 };
 
+// 과목 출처 구분. 전공 로드맵 격자는 'major'만, 하단 바이오헬스 섹션은 'biohealth'만 쓴다.
+const COURSE_SOURCE_MAJOR = 'major';
+const COURSE_SOURCE_BIOHEALTH = 'biohealth';
+
+// 바이오헬스 추천 교과목을 수준 순(초급 -> 중급 -> 고급)으로 보여주기 위한 정렬 가중치.
+const BIOHEALTH_LEVEL_ORDER: Record<string, number> = {
+    '초급': 0,
+    '중급': 1,
+    '고급': 2,
+};
+
 // 논문 로드맵에서 태그당 확보해 둘 후보 논문 수.
 // 앞 태그와 겹치거나 이미 읽은 논문을 건너뛰고도 카드를 채울 수 있도록 넉넉히 받아둔다.
 const PAPER_CANDIDATE_POOL_SIZE = 20;
@@ -351,6 +362,7 @@ export class RoadmapService {
     // 결과 페이지 '전공 로드맵' 섹션용 조회.
     // 전공과목 DB를 매번 조회하므로 팀원이 과목을 추가/수정/삭제하면 즉시 반영된다.
     // 학년 -> 학기 순으로 그룹핑하고, 사용자의 최근 관심 분야와 겹치는 과목은 recommended=true.
+    // 하단 '바이오헬스 추천 교과목' 섹션은 별도 배열(biohealthCourses)로 함께 반환한다.
     async getMajorRoadmap(userId: number) {
         const userRoadmap = await this.userRoadmapRepository.findOne({
             where: { userId },
@@ -359,7 +371,10 @@ export class RoadmapService {
             userRoadmap?.latest.answers.interestFields ?? [];
         const interestSet = new Set(interestFields);
 
+        // 전공과목만. 바이오헬스는 year_recommended/semester가 null이라
+        // 학년/학기 격자에 섞이면 안 된다.
         const courses = await this.majorCourseRepository.find({
+            where: { source: COURSE_SOURCE_MAJOR },
             order: {
                 year_recommended: 'ASC',
                 semester: 'ASC',
@@ -381,14 +396,20 @@ export class RoadmapService {
                 courseFields.some((c) => interestSet.has(c));
             const item = this.toCourseItem(course, recommended);
 
-            if (!yearMap.has(course.year_recommended)) {
-                yearMap.set(course.year_recommended, new Map());
+            // source='major'면 DB 제약상 둘 다 not null이지만, 엔티티 타입은 optional이므로 방어한다.
+            const year = course.year_recommended;
+            const semester = course.semester;
+            if (year === null || year === undefined) continue;
+            if (semester === null || semester === undefined) continue;
+
+            if (!yearMap.has(year)) {
+                yearMap.set(year, new Map());
             }
-            const semesterMap = yearMap.get(course.year_recommended)!;
-            if (!semesterMap.has(course.semester)) {
-                semesterMap.set(course.semester, []);
+            const semesterMap = yearMap.get(year)!;
+            if (!semesterMap.has(semester)) {
+                semesterMap.set(semester, []);
             }
-            semesterMap.get(course.semester)!.push(item);
+            semesterMap.get(semester)!.push(item);
         }
 
         const years = [...yearMap.entries()]
@@ -403,7 +424,49 @@ export class RoadmapService {
                     })),
             }));
 
-        return { interestFields, years };
+        const biohealthCourses =
+            await this.getBiohealthCourses(interestFields);
+
+        return { interestFields, years, biohealthCourses };
+    }
+
+    // 결과 페이지 하단 '바이오헬스 추천 교과목' 섹션용 조회.
+    // 관심 분야로 태그가 겹치는 바이오헬스 과목만 가져온다.
+    // 한 과목이 여러 관심 분야에 걸리면 앞선 관심 분야(tag1 > tag2 > tag3)의 배지를 달고 한 번만 노출한다.
+    private async getBiohealthCourses(interestFields: string[]) {
+        if (interestFields.length === 0) return [];
+
+        const courses = await this.majorCourseRepository.find({
+            where: { source: COURSE_SOURCE_BIOHEALTH },
+            order: { course_id: 'ASC' },
+        });
+
+        const items = courses
+            .map((course) => {
+                const courseFields = course.fields ?? [];
+                // 사용자가 고른 순서대로 훑어 첫 번째로 걸리는 태그를 배지로 쓴다.
+                const tag = interestFields.find((f) => courseFields.includes(f));
+                if (!tag) return null;
+                return {
+                    tag, // 왼쪽 배지 (예: 'CV')
+                    courseId: course.course_id,
+                    name: course.name,
+                    description: course.description,
+                    category: course.category, // 전공 칩 (예: '인공지능')
+                    level: course.level, // 수준 칩 (초급/중급/고급)
+                    credit: course.credit, // 학점 칩
+                };
+            })
+            .filter((item): item is NonNullable<typeof item> => item !== null);
+
+        // 관심 분야 순 -> 수준 순(초급 먼저) -> 과목코드 순
+        return items.sort(
+            (a, b) =>
+                interestFields.indexOf(a.tag) - interestFields.indexOf(b.tag) ||
+                (BIOHEALTH_LEVEL_ORDER[a.level] ?? 99) -
+                    (BIOHEALTH_LEVEL_ORDER[b.level] ?? 99) ||
+                a.courseId.localeCompare(b.courseId),
+        );
     }
 
     // 전공과목 -> 결과 페이지 표시용 항목 (과목명 + hover 툴팁용 설명 포함)

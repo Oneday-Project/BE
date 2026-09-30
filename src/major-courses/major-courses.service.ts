@@ -28,7 +28,12 @@ export class MajorCoursesService {
   }
 
   async getAllCourses() {
-    return this.majorCourseRepository.find();
+    // 바이오헬스 교과목(source='biohealth')은 로드맵 하단 전용이므로 이 목록에서 제외한다.
+    return this.majorCourseRepository.find({
+      where: {
+        source: 'major',
+      },
+    });
   }
 
   async getCourseById(course_id: string) {
