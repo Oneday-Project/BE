@@ -6,13 +6,11 @@ import {
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/users.entity';
-import { Not, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { AuthProviderEnum } from './const/auth-provider.const';
 import {
-  NICKNAME_ADJECTIVES,
-  NICKNAME_MAX_ATTEMPTS,
-  NICKNAME_NOUNS,
-  NICKNAME_NUMBER_MAX,
+  NICKNAME_ANIMALS,
+  NICKNAME_PREFIXES,
 } from './const/nickname-words.const';
 @Injectable()
 export class UsersService {
@@ -24,19 +22,7 @@ export class UsersService {
   async createUser(
     user: Pick<User, 'username' | 'email' | 'nickname' | 'password'>,
   ) {
-    // 1) nickname 중복이 없는지 확인
-    // exists() -> 조건에 해당되는 값이 있으면 true 반환
-    const nickNameExists = await this.userRepository.exists({
-      where: {
-        nickname: user.nickname,
-      },
-    });
-
-    if (nickNameExists) {
-      throw new ConflictException('이미 존재하는 nickname 입니다!');
-    }
-
-    // 2) email 중복이 없는지 확인
+    // email 중복이 없는지 확인 (nickname은 겹쳐도 되므로 확인하지 않는다)
     // 샘물 계정은 email이 null일 수 있고, null끼리는 중복으로 보지 않으므로 값이 있을 때만 확인한다.
     if (user.email) {
       const emailExists = await this.userRepository.exists({
@@ -109,19 +95,6 @@ export class UsersService {
       throw new NotFoundException('존재하지 않는 사용자입니다!');
     }
 
-    if (updateUserDto.nickname) {
-      const nickNameExists = await this.userRepository.exists({
-        where: {
-          id: Not(id),
-          nickname: updateUserDto.nickname,
-        },
-      });
-
-      if (nickNameExists) {
-        throw new ConflictException('이미 존재하는 nickname 입니다!');
-      }
-    }
-
     await this.userRepository.update({ id }, updateUserDto);
 
     return this.userRepository.findOne({
@@ -181,7 +154,7 @@ export class UsersService {
   }) {
     const newUser = this.userRepository.create({
       username: user.username,
-      nickname: await this.generateUniqueNickname(),
+      nickname: this.buildRandomNickname(),
       email: null,
       password: null,
       studentId: user.studentId,
@@ -193,22 +166,19 @@ export class UsersService {
     try {
       return await this.userRepository.save(newUser);
     } catch (e) {
-      // unique 제약 위반(23505)이 아니면 그대로 던진다.
+      // 학번 unique 제약 위반(23505)은 같은 사람이 동시에 두 번 로그인한 경우다.
+      // 먼저 저장된 계정을 그대로 쓰면 된다. 그 외 에러는 그대로 던진다.
       if ((e as { code?: string }).code !== '23505') {
         throw e;
       }
 
-      // 같은 사람이 동시에 두 번 로그인해서 학번이 먼저 저장된 경우 - 그 계정을 쓰면 된다.
       const saved = await this.getUserByStudentId(user.studentId);
 
-      if (saved) {
-        return saved;
+      if (!saved) {
+        throw e;
       }
 
-      // 학번이 아니라 닉네임이 겹친 경우 - 겹치지 않는 닉네임으로 한 번 더 시도한다.
-      newUser.nickname = `${newUser.nickname}${Date.now().toString().slice(-4)}`;
-
-      return this.userRepository.save(newUser);
+      return saved;
     }
   }
 
@@ -226,36 +196,16 @@ export class UsersService {
     return this.findUserById(id);
   }
 
-  // 닉네임 자동 생성 - "형용사 + 명사 + 숫자 4자리" (예: 성실한판다4821)
-  // 학번이나 실명을 쓰지 않는다. 중복이면 몇 번 다시 만들어보고,
-  // 그래도 실패하면 시간값을 붙여 확실히 겹치지 않는 닉네임을 만든다.
-  private async generateUniqueNickname() {
-    for (let attempt = 0; attempt < NICKNAME_MAX_ATTEMPTS; attempt++) {
-      const nickname = this.buildRandomNickname();
-
-      const exists = await this.userRepository.exists({
-        where: {
-          nickname,
-        },
-      });
-
-      if (!exists) {
-        return nickname;
-      }
-    }
-
-    return `${this.buildRandomNickname()}${Date.now().toString().slice(-4)}`;
-  }
-
+  // 닉네임 자동 생성 - "꾸밈말 + 동물" (예: 논문읽는판다). 숫자는 붙이지 않는다.
+  // 닉네임은 unique가 아니므로 겹쳐도 그대로 쓴다(사용자 구분은 id와 학번이 한다).
+  // 마음에 들지 않으면 PATCH /users/me 로 바꿀 수 있다.
   private buildRandomNickname() {
-    const adjective =
-      NICKNAME_ADJECTIVES[Math.floor(Math.random() * NICKNAME_ADJECTIVES.length)];
-    const noun = NICKNAME_NOUNS[Math.floor(Math.random() * NICKNAME_NOUNS.length)];
-    const number = Math.floor(Math.random() * NICKNAME_NUMBER_MAX)
-      .toString()
-      .padStart(4, '0');
+    const prefix =
+      NICKNAME_PREFIXES[Math.floor(Math.random() * NICKNAME_PREFIXES.length)];
+    const animal =
+      NICKNAME_ANIMALS[Math.floor(Math.random() * NICKNAME_ANIMALS.length)];
 
-    return `${adjective}${noun}${number}`;
+    return `${prefix}${animal}`;
   }
 
   // auth모듈에서 사용하는 함수

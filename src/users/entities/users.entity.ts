@@ -16,9 +16,8 @@ export class User extends BaseModel {
   @Column()
   username!: string;
 
-  @Column({
-    unique: true,
-  })
+  // 닉네임은 겹쳐도 된다 - 마이페이지에서 본인만 보고, 사용자 구분은 id와 학번이 한다.
+  @Column()
   nickname!: string;
 
   // 샘물(학교 계정) 로그인으로 가입한 사용자는 이메일이 없을 수 있으므로 nullable.
