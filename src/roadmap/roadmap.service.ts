@@ -32,12 +32,15 @@ import { PapersService } from 'src/papers/papers.service';
 const MAJOR_BASIC_TAG = '기초';
 
 // Q7(한 달 평균 논문 읽는 편수) 점수 -> 성장 가이드에 표시할 빈도 라벨
+// 프론트 Q7 선택지(없음 / 1~3편 / 4~10편 / 11~20편 / 20편 이상)와 문구를 맞춘다.
+// 여기가 어긋나면 사용자가 고른 것과 다른 숫자가 결과 화면에 표시되고
+// GPT도 틀린 값을 근거로 조언한다.
 const PAPER_FREQUENCY_LABELS: Record<number, string> = {
-    0: '월 0회',
-    2.5: '월 1~3회',
-    5: '월 4~6회',
-    7.5: '월 7~9회',
-    10: '월 10회 이상',
+    0: '월 0편',
+    2.5: '월 1~3편',
+    5: '월 4~10편',
+    7.5: '월 11~20편',
+    10: '월 20편 이상',
 };
 
 // 추천 과제 정렬 우선순위 (숫자가 작을수록 먼저 표시).
@@ -139,25 +142,30 @@ export class RoadmapService {
         return 'specialization';
     }
 
+    // 연구 활동 경험은 Q6(연구실 인턴/학부 연구생)이다.
+    // Q7(한 달 논문 읽는 편수)을 보면 논문만 읽어도 '연구 활동 경험 있음'이 붙어
+    // 레이더의 experience 축((Q5+Q6)/2)과 반대되는 말을 하게 된다.
     private determineStrengths(dto: AnalyzeRoadmapDto): string[] {
         const strengths: string[] = [];
         if (dto.interestFields.length >= 2) strengths.push('관심 분야 명확함');
         if (dto.q5 >= 7.5) strengths.push('프로젝트 경험 보유');
-        if (dto.q7 >= 5) strengths.push('연구 활동 경험 있음');
+        if (dto.q6 >= 5) strengths.push('연구 활동 경험 있음');
+        if (dto.q7 >= 7.5) strengths.push('논문 읽기 루틴 있음');
         return strengths;
     }
 
     private determineWeaknesses(dto: AnalyzeRoadmapDto): string[] {
         const weaknesses: string[] = [];
         if (dto.q5 <= 2.5) weaknesses.push('프로젝트 경험 부족');
-        if (dto.q7 <= 2.5) weaknesses.push('연구 경험 부족');
+        if (dto.q6 <= 2.5) weaknesses.push('연구실 경험 부족');
+        if (dto.q7 <= 2.5) weaknesses.push('논문 읽기 루틴 부족');
         if (dto.gpaBand <= 2.5) weaknesses.push('학점 개선 필요');
         return weaknesses;
     }
 
     // 성장 가이드 '현재 논문 빈도' 라벨 (Q7 답변 그대로 사용)
     private paperFrequencyLabel(dto: AnalyzeRoadmapDto): string {
-        return PAPER_FREQUENCY_LABELS[dto.q7] ?? '월 0회';
+        return PAPER_FREQUENCY_LABELS[dto.q7] ?? '월 0편';
     }
 
     // 성장 가이드 '현재 대외 경험' 라벨 (Q9+Q10 선택 개수, '없음' 제외, 최대 8개)
@@ -369,10 +377,13 @@ export class RoadmapService {
         dto: AnalyzeRoadmapDto,
         frequencyLabel: string,
     ): string {
+        // 선택지는 0 / 2.5 / 5 / 7.5 / 10 다섯 단계이고 5는 한가운데다.
+        // 5를 '낮음'에 넣으면 보통인 학생에게 "이해 수준이 낮다"고 말하게 되므로
+        // 양 끝 두 단계만 높음/낮음으로 보고 5는 어느 쪽도 아니게 둔다.
         const volumeHigh = dto.q7 >= 7.5;
-        const volumeLow = dto.q7 <= 5;
+        const volumeLow = dto.q7 <= 2.5;
         const graspHigh = dto.q8 >= 7.5;
-        const graspLow = dto.q8 <= 5;
+        const graspLow = dto.q8 <= 2.5;
 
         if (volumeHigh && graspLow) {
             return `${frequencyLabel} 읽지만 읽을 때 이해 수준은 낮다 (읽는 양은 충분하고 깊이가 부족한 상태)`;
@@ -386,7 +397,7 @@ export class RoadmapService {
         if (volumeHigh && graspHigh) {
             return `${frequencyLabel} 읽고 이해 수준도 높다`;
         }
-        return `${frequencyLabel}, 이해 수준은 ${this.levelWord(dto.q8)}`;
+        return `${frequencyLabel} 읽고, 읽을 때 이해 수준은 ${this.levelWord(dto.q8)}`;
     }
 
     // GPT 코멘트에서 실제 과목명을 지목할 수 있도록 관심 분야와 겹치는 전공과목을 모은다.
