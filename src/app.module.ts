@@ -89,7 +89,7 @@ import { GradInfo } from './grad-info/entities/grad-info.entity';
           HaiPaperActivityLog,
           GradInfo,
         ],
-        synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? true: true, 
+        synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? false: true, 
         ssl: configService.get<string>(envVariableKeys.env) === 'prod'? { rejectUnauthorized: false } : false,
       }),
       inject: [ConfigService]
