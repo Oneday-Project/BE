@@ -19,7 +19,9 @@ import {
 } from './entities/user-roadmap.entity';
 import {
     AnalyzeRoadmapDto,
+    INTEREST_FIELD_LABELS,
     Q9_NONE,
+    Q9_OPTIONS,
     Q10_NONE,
 } from './dto/analyze-roadmap.dto';
 import { AiServicesService } from 'src/ai-services/ai-services.service';
@@ -57,6 +59,32 @@ const BIOHEALTH_LEVEL_ORDER: Record<string, number> = {
     '중급': 1,
     '고급': 2,
 };
+
+// 레이더 점수(0~10)를 GPT에 넘길 말로 바꾸는 구간.
+// 숫자를 넘기면 GPT가 "경험 1.3점"처럼 사용자에게 그대로 노출한다.
+const LEVEL_WORDS: { min: number; word: string }[] = [
+    { min: 7.5, word: '매우 높음' },
+    { min: 6, word: '높음' },
+    { min: 4, word: '보통' },
+    { min: 2, word: '낮음' },
+    { min: 0, word: '매우 낮음' },
+];
+
+// 레이더 축의 화면 라벨. GPT 코멘트도 이 이름을 그대로 쓴다.
+const RADAR_AREA_LABELS: { key: keyof RoadmapRadar; label: string }[] = [
+    { key: 'interest', label: '관심 분야 이해' },
+    { key: 'experience', label: '연구·프로젝트 경험' },
+    { key: 'paper', label: '논문 루틴' },
+    { key: 'preparation', label: '포트폴리오' },
+    { key: 'academic', label: '학업 성적' },
+];
+
+// GPT 프롬프트에 넣을 추천 과목명 최대 개수.
+// GPT는 이 중 하나만 골라 언급하므로 후보는 넉넉해도 된다.
+const GPT_COURSE_HINT_LIMIT = 8;
+
+// 수강 학년 제한이 없어지는 학년. 4학년은 전 학년 과목을 들을 수 있다.
+const SENIOR_YEAR = 4;
 
 // 논문 로드맵에서 태그당 확보해 둘 후보 논문 수.
 // 앞 태그와 겹치거나 이미 읽은 논문을 건너뛰고도 카드를 채울 수 있도록 넉넉히 받아둔다.
@@ -216,9 +244,11 @@ export class RoadmapService {
     // 설문 응답을 분석해 로드맵 결과(점수/단계/레이더/추천 과제)를 만든다.
     // GPT를 호출하므로 반드시 로그인한 사용자만 도달할 수 있어야 한다(userId 필수).
     // 논문 로드맵은 그 사용자의 읽음 기록 기준으로 개인화한다.
+    // previousRadar는 수정일 때만 넘어온다. GPT가 지난번 대비 변화를 언급할 수 있게 한다.
     private async buildResult(
         dto: AnalyzeRoadmapDto,
         userId: number,
+        previousRadar?: RoadmapRadar,
     ): Promise<RoadmapResult> {
         const totalScore = this.calculateScore(dto);
         const stage = this.determineStage(totalScore);
@@ -244,26 +274,52 @@ export class RoadmapService {
         const paperFrequency = this.paperFrequencyLabel(dto);
         const externalActivity = this.externalActivityLabel(dto);
 
-        // 서로 의존성 없는 GPT 호출 2건 + 논문 매칭 조회를 병렬로 실행해 응답 시간을 줄인다.
-        const [comment, tips, paperRoadmap] = await Promise.all([
-            this.aiServicesService.generateRoadmapComment({
-                totalScore,
-                stage,
-                interestFields: dto.interestFields,
-                strengths,
-                weaknesses,
-                radar,
-            }),
-            this.aiServicesService.generateRoadmapGrowthGuideTips({
-                stage,
-                interestFields: dto.interestFields,
-                paperFrequencyLabel: paperFrequency,
-                externalActivityLabel: externalActivity,
-                strengths,
-                weaknesses,
-                radar,
-            }),
+        // GPT 프롬프트에 실제 과목명과 논문 제목을 넣기 위해 DB 조회를 먼저 끝낸다.
+        // 두 조회는 서로 독립이라 병렬로 돌리고, GPT 2건은 그 뒤에 다시 병렬로 돌린다.
+        const [courseHint, paperRoadmap] = await Promise.all([
+            this.getRecommendedCourseNames(dto),
             this.getPaperRoadmap(dto.interestFields, userId),
+        ]);
+
+        // Q9 보기 중 고르지 않은 항목. GPT가 "다음에 뭘 준비할지"를 추측하지 않고 그대로 쓸 수 있다.
+        const preparedItems = dto.q9.filter((item) => item !== Q9_NONE);
+        const missingItems = Q9_OPTIONS.filter(
+            (option) => option !== Q9_NONE && !preparedItems.includes(option),
+        );
+        const presentationItems = dto.q10.filter((item) => item !== Q10_NONE);
+
+        const aiContext = {
+            stage,
+            year: dto.year,
+            semester: dto.semester,
+            interestFields: dto.interestFields,
+            interestFieldLabels: dto.interestFields.map(
+                (f) => INTEREST_FIELD_LABELS[f] ?? f,
+            ),
+            strengths,
+            weaknesses,
+            radar,
+            levelSummary: this.describeLevels(radar),
+            lowestArea: this.lowestRadarArea(radar),
+            paperReadingState: this.describePaperReading(dto, paperFrequency),
+            externalActivityLabel: externalActivity,
+            preparedItems,
+            missingItems,
+            presentationItems,
+            recommendedCourses: courseHint.names,
+            recommendedCourseNote: courseHint.note,
+            recommendedPaperTitle: paperRoadmap.find((p) => p.paper)?.paper
+                ?.title,
+            previousRadar,
+        };
+
+        // 서로 의존성 없는 GPT 호출 2건을 병렬로 실행해 응답 시간을 줄인다.
+        const [comment, tips] = await Promise.all([
+            this.aiServicesService.generateRoadmapComment({
+                ...aiContext,
+                totalScore,
+            }),
+            this.aiServicesService.generateRoadmapGrowthGuideTips(aiContext),
         ]);
 
         return {
@@ -286,11 +342,109 @@ export class RoadmapService {
         };
     }
 
+    // 레이더 점수를 말로 바꾼다. GPT에는 숫자를 넘기지 않는다.
+    private levelWord(value: number): string {
+        return (
+            LEVEL_WORDS.find((l) => value >= l.min)?.word ?? '매우 낮음'
+        );
+    }
+
+    private describeLevels(radar: RoadmapRadar): string {
+        return RADAR_AREA_LABELS.map(
+            ({ key, label }) => `${label} ${this.levelWord(radar[key])}`,
+        ).join(' / ');
+    }
+
+    // 가장 낮은 축을 코드에서 정해 넘긴다. GPT가 고르게 두면 엉뚱한 축을 짚는다.
+    // 동점이면 RADAR_AREA_LABELS 순서가 앞선 축을 쓴다.
+    private lowestRadarArea(radar: RoadmapRadar): string {
+        return RADAR_AREA_LABELS.reduce((a, b) =>
+            radar[b.key] < radar[a.key] ? b : a,
+        ).label;
+    }
+
+    // 논문 루틴 축은 Q7(읽는 양)과 Q8(이해도)의 평균이라 둘의 비대칭이 묻힌다.
+    // 처방이 정반대이므로 어느 쪽이 부족한지를 문장으로 만들어 넘긴다.
+    private describePaperReading(
+        dto: AnalyzeRoadmapDto,
+        frequencyLabel: string,
+    ): string {
+        const volumeHigh = dto.q7 >= 7.5;
+        const volumeLow = dto.q7 <= 5;
+        const graspHigh = dto.q8 >= 7.5;
+        const graspLow = dto.q8 <= 5;
+
+        if (volumeHigh && graspLow) {
+            return `${frequencyLabel} 읽지만 읽을 때 이해 수준은 낮다 (읽는 양은 충분하고 깊이가 부족한 상태)`;
+        }
+        if (volumeLow && graspHigh) {
+            return `${frequencyLabel}로 읽는 양은 적지만 읽을 때 이해 수준은 높다 (깊이는 있고 양이 부족한 상태)`;
+        }
+        if (volumeLow && graspLow) {
+            return `${frequencyLabel}로 읽는 양도 적고 이해 수준도 낮다`;
+        }
+        if (volumeHigh && graspHigh) {
+            return `${frequencyLabel} 읽고 이해 수준도 높다`;
+        }
+        return `${frequencyLabel}, 이해 수준은 ${this.levelWord(dto.q8)}`;
+    }
+
+    // GPT 코멘트에서 실제 과목명을 지목할 수 있도록 관심 분야와 겹치는 전공과목을 모은다.
+    // year_recommended/semester는 그 과목의 개설 학기와 대상 학년을 뜻한다.
+    // 다음 학기에 열리는 과목이 있으면 그것을 우선 제안하고,
+    // 4학년처럼 수강 제한이 없거나 다음 학기 개설 과목이 없으면 관심 분야 과목 전체를 넘긴다.
+    private async getRecommendedCourseNames(
+        dto: AnalyzeRoadmapDto,
+    ): Promise<{ names: string[]; note: string }> {
+        const nextYear = dto.semester === 2 ? dto.year + 1 : dto.year;
+        const nextSemester = dto.semester === 2 ? 1 : 2;
+
+        const courses = await this.majorCourseRepository.find({
+            where: { source: COURSE_SOURCE_MAJOR },
+            order: {
+                year_recommended: 'ASC',
+                semester: 'ASC',
+                course_id: 'ASC',
+            },
+        });
+
+        const interestSet = new Set(dto.interestFields);
+        const matched = courses.filter((c) =>
+            (c.fields ?? []).some((f) => interestSet.has(f)),
+        );
+
+        // 4학년은 전 학년 과목을 수강할 수 있으므로 학기를 좁히지 않는다.
+        if (dto.year < SENIOR_YEAR) {
+            const nextSemesterCourses = matched.filter(
+                (c) =>
+                    c.year_recommended === nextYear &&
+                    c.semester === nextSemester,
+            );
+            if (nextSemesterCourses.length > 0) {
+                return {
+                    names: nextSemesterCourses
+                        .map((c) => c.name)
+                        .slice(0, GPT_COURSE_HINT_LIMIT),
+                    note: `${nextYear}학년 ${nextSemester}학기 개설`,
+                };
+            }
+        }
+
+        return {
+            names: matched.map((c) => c.name).slice(0, GPT_COURSE_HINT_LIMIT),
+            note:
+                dto.year >= SENIOR_YEAR
+                    ? '4학년은 전 학년 과목을 수강할 수 있어 관심 분야 과목 전체'
+                    : '다음 학기 개설 과목이 없어 관심 분야 과목 전체',
+        };
+    }
+
     private async buildSnapshot(
         dto: AnalyzeRoadmapDto,
         userId: number,
+        previousRadar?: RoadmapRadar,
     ): Promise<RoadmapSnapshot> {
-        const result = await this.buildResult(dto, userId);
+        const result = await this.buildResult(dto, userId, previousRadar);
         return { answers: dto, result, createdAt: new Date().toISOString() };
     }
 
@@ -343,7 +497,12 @@ export class RoadmapService {
             );
         }
 
-        userRoadmap.latest = await this.buildSnapshot(dto, userId);
+        // 수정 전 최근 로드맵의 레이더를 넘겨 GPT가 변화를 언급할 수 있게 한다.
+        userRoadmap.latest = await this.buildSnapshot(
+            dto,
+            userId,
+            userRoadmap.latest.result.radar,
+        );
         const saved = await this.userRoadmapRepository.save(userRoadmap);
         return this.toResponse(saved);
     }

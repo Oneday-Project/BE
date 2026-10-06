@@ -960,66 +960,100 @@ export class AiServicesService {
     // 의존성 방향을 위해 roadmap 타입을 import 하지 않고 원시값으로만 받는다.
     private buildFallbackRoadmapComment(params: RoadmapCommentParams): string {
         const strength = params.strengths[0] ?? '기본기';
-        const axes = [
-            { label: '이해도', value: params.radar.interest },
-            { label: '경험', value: params.radar.experience },
-            { label: '논문 읽기 루틴', value: params.radar.paper },
-            { label: '포트폴리오', value: params.radar.preparation },
-            { label: '성적', value: params.radar.academic },
-        ];
-        const weakest = axes.reduce((a, b) => (b.value < a.value ? b : a));
+        const next = params.missingItems[0];
         return (
-            `현재 준비도는 ${params.totalScore}점이에요.\n` +
-            `강점은 ${strength}이고, 다음 단계로는 ${weakest.label} 보완을 먼저 하면 좋아요.`
+            `강점은 ${strength}이에요.\n` +
+            `다음 단계로는 ${params.lowestArea} 보완을 먼저 하면 좋아요.` +
+            (next ? `\n${next}부터 준비해 보세요.` : '')
         );
     }
 
+    // 코멘트와 성장 가이드가 공유하는 사용자 상태 요약.
+    // 두 프롬프트가 같은 사실을 보도록 한 곳에서 만든다.
+    private buildRoadmapUserContext(
+        params: RoadmapCommentParams | RoadmapGrowthGuideParams,
+    ): string {
+        const prev = params.previousRadar;
+        const changed = prev
+            ? ([
+                  ['이해도', params.radar.interest - prev.interest],
+                  ['경험', params.radar.experience - prev.experience],
+                  ['논문 루틴', params.radar.paper - prev.paper],
+                  ['포트폴리오', params.radar.preparation - prev.preparation],
+                  ['성적', params.radar.academic - prev.academic],
+              ] as [string, number][])
+                  .filter(([, d]) => d !== 0)
+                  .map(([k, d]) => `${k} ${d > 0 ? '+' : ''}${d}`)
+                  .join(', ') || '변화 없음'
+            : '최초 생성';
+
+        return `
+            학년/학기: ${params.year}학년 ${params.semester}학기
+            단계: ${params.stage}
+            관심 분야: ${params.interestFieldLabels.join(', ')}
+            항목별 수준: ${params.levelSummary}
+            가장 낮은 항목: ${params.lowestArea}
+            논문 읽기: ${params.paperReadingState}
+            대외 경험: ${params.externalActivityLabel}
+            이미 준비된 것: ${params.preparedItems.join(', ') || '없음'}
+            아직 없는 것: ${params.missingItems.join(', ') || '없음'}
+            발표 경험: ${params.presentationItems.join(', ') || '없음'}
+            강점: ${params.strengths.join(', ') || '없음'}
+            약점: ${params.weaknesses.join(', ') || '없음'}
+            추천 과목 (${params.recommendedCourseNote}): ${params.recommendedCourses.join(', ') || '없음'}
+            추천 논문: ${params.recommendedPaperTitle || '없음'}
+            이전 로드맵 대비: ${changed}
+        `;
+    }
+
     // 설문 분석 결과를 바탕으로 결과 페이지의 '종합 코멘트' 문구를 GPT로 생성한다.
-    // 논문 요약과 동일한 OpenAI 클라이언트/모델/JSON 응답 방식을 사용한다.
+    // 종합 점수는 화면에 따로 크게 표시되므로 코멘트에서는 숫자를 다시 언급하지 않는다.
     async generateRoadmapComment(params: RoadmapCommentParams): Promise<string> {
-        const gptModel = 'gpt-5.4-mini';
         const fallback = this.buildFallbackRoadmapComment(params);
 
         const systemPrompt = `
-            너는 대학원 진학을 준비하는 학생의 로드맵 결과를 요약해 주는 한국어 멘토다.
+            너는 대학원 진학을 준비하는 상명대 휴먼AI공학전공 학부생의 로드맵 결과를 읽고
+            개인화된 진단을 써 주는 한국어 멘토다.
 
             반드시 아래 필드 하나만 가진 JSON 객체를 반환한다.
-            - comment: 아래 형식과 조건을 모두 지킨 한국어 코멘트 문자열
+            - comment: 한국어 코멘트 문자열 (줄바꿈은 \n 으로 표현)
 
-            형식 (줄바꿈은 \\n 으로 표현):
-            1) 첫 줄은 정확히 "현재 준비도는 {score}점이에요." 로 작성한다.
-               점수는 user message의 score 값을 그대로 사용하고 임의로 바꾸지 않는다.
-            2) 둘째 줄부터는 "강점은 ~이고, 다음 단계로는 ~를 먼저 보완하면 좋아요." 형식으로 작성한다.
-               - 강점은 user message의 strengths 중 가장 핵심 1가지를 자연스럽게 요약한다.
-               - 다음 단계는 radar 점수 중 가장 낮은 영역을 우선 보완 대상으로 잡아 구체적으로 제안한다.
-                 (예: 논문 루틴이 낮으면 "논문 읽기 루틴(월 4~6편 목표)")
+            세 문단으로 쓴다. 문단은 \n 하나로만 구분하고 빈 줄을 넣지 않는다.
+            각 문단은 1~2문장, 전체 200~250자를 넘지 않는다.
+            1) 현재 위치 - 강점을 근거와 함께 짚는다. 레이더 점수나 원본 응답 중
+               실제로 높은 항목을 하나 이상 구체적으로 인용한다.
+            2) 가장 시급한 것 - "가장 낮은 항목"으로 주어진 그 항목을 반드시 그대로 쓴다.
+               다른 항목으로 바꾸지 말고, 두 가지를 섞지도 않는다. 왜 그 항목이 낮은지를
+               다른 입력값으로 설명한다.
+            3) 다음에 할 일 - "추천 과목"에서 실제 과목명을 하나 지목하고, "아직 없는 것"
+               중 하나를 채우는 행동을 덧붙인다. 괄호 안 설명이 특정 학기 개설이면
+               "다음 학기에 ~를 들으면서"로 쓰고, 과목 전체 목록이면 수강 시기를 단정하지
+               말고 "~를 수강하면서"처럼 쓴다. 추천 과목이 없으면 이 문단은 과목 없이
+               "아직 없는 것" 중심으로 쓴다.
 
-            조건:
-            - 전체 3~4줄, 공백 포함 100자 내외로 간결하게 작성한다.
-            - 격려하는 따뜻한 톤. 과장 표현과 이모지는 쓰지 않는다.
-            - 한국어 조사(을/를, 이고/고 등)를 문맥에 맞게 자연스럽게 맞춘다.
-        `;
+            쓰지 말 것:
+            - 숫자 점수를 문장에 쓰지 않는다. 종합 점수는 화면에 이미 크게 표시된다.
+            - 1문단에서는 약점을 말하지 않는다. 약점은 2문단에서만 다룬다.
+            - 관심 분야 괄호 안의 설명은 풀어서 쓰되, 영어 약어와 한글을 함께 나열하지 않는다.
+              "CV"는 컴퓨터비전을 뜻하며, "아직 없는 것"에 적힌 "CV(이력서)"와는 다른 것이다.
+              둘을 같은 문장에 섞지 않는다.
+            - 관심 분야를 단순 나열하지 않는다. 그중 하나를 골라 구체적으로 쓴다.
+            - "추천 과목"에 없는 과목명을 지어내지 않는다.
+            - "이미 준비된 것"에 있는 항목을 다시 준비하라고 하지 않는다.
+            - 과장 표현, 이모지, 느낌표를 쓰지 않는다.
 
-        const userPrompt = `
-            score: ${params.totalScore}
-            stage: ${params.stage}
-            interestFields: ${params.interestFields.join(', ')}
-            strengths: ${params.strengths.join(', ') || '없음'}
-            weaknesses: ${params.weaknesses.join(', ') || '없음'}
-            radar(각 0~10):
-              이해도: ${params.radar.interest}
-              경험: ${params.radar.experience}
-              논문 루틴: ${params.radar.paper}
-              포트폴리오: ${params.radar.preparation}
-              성적: ${params.radar.academic}
+            톤: 격려하되 담백하게. "~해요" 체.
         `;
 
         try {
             const response = await this.openai.chat.completions.create({
-                model: gptModel,
+                model: this.gptModel,
                 messages: [
                     { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt },
+                    {
+                        role: 'user',
+                        content: this.buildRoadmapUserContext(params),
+                    },
                 ],
                 response_format: { type: 'json_object' },
             });
@@ -1038,9 +1072,13 @@ export class AiServicesService {
     // 논문 읽기 빈도/대외 경험 수치는 roadmap 모듈에서 이미 계산해 label로 넘겨주므로,
     // GPT는 그 값을 근거로 문구만 작성한다 (숫자 자체를 새로 만들지 않음).
     private buildFallbackGrowthTips(params: RoadmapGrowthGuideParams): string[] {
+        const missing = params.missingItems[0];
         return [
-            '논문 읽기 횟수를 유지하시되, 이해하고 정리할 수 있는 수준으로 학습해보세요.',
-            '관심 있는 분야의 최신 트렌드에 맞춰 다양한 형태의 대외 활동을 꾸준히 진행해보세요.',
+            '읽은 논문마다 핵심 질문을 한 줄로 정리해 보세요.',
+            `관심 분야인 ${params.interestFields[0] ?? 'AI'} 주제로 작은 프로젝트를 하나 완성해 보세요.`,
+            missing
+                ? `${missing}을(를) 준비해 지원 서류의 빈칸을 채워 보세요.`
+                : '지금까지 정리한 결과물을 발표 형태로 한 번 공유해 보세요.',
         ];
     }
 
@@ -1050,37 +1088,31 @@ export class AiServicesService {
         const fallback = this.buildFallbackGrowthTips(params);
 
         const systemPrompt = `
-            너는 대학원 진학을 준비하는 학생에게 성장 가이드를 제안하는 한국어 멘토다.
+            너는 대학원 진학을 준비하는 학부생에게 다음 행동을 제안하는 한국어 멘토다.
 
             반드시 아래 필드 하나만 가진 JSON 객체를 반환한다.
-            - tips: 정확히 2개의 한국어 문장으로 이루어진 문자열 배열
+            - tips: 정확히 3개의 한국어 문자열 배열
 
-            작성 규칙:
-            1) 첫 번째 문장: user message의 "현재 논문 읽기 빈도"를 참고해서, 그 빈도를 유지하거나
-               이해도를 높이는 방향의 논문 읽기 습관 제안
-            2) 두 번째 문장: user message의 "현재 대외 경험"과 interestFields를 참고해서,
-               관심 분야의 최신 트렌드에 맞는 대외 활동(발표, 프로젝트, 스터디 등) 제안
+            세 제안은 서로 다른 영역을 다룬다. 아래 중 그 학생에게 급한 순으로 3개를 고른다.
+            - 논문 읽기 (양 / 이해도 / 기록 중 부족한 쪽)
+            - 연구·프로젝트 경험
+            - 포트폴리오 ("아직 없는 것" 중에서)
+            - 발표 경험 (현재 발표 경험의 다음 단계)
+            - 수강 ("추천 과목" 활용)
 
-            조건:
-            - 각 문장 40~60자 내외, "~해보세요" 체의 부드러운 권유형으로 끝맺는다.
-            - 격려하는 따뜻한 톤. 과장 표현과 이모지는 쓰지 않는다.
-            - 숫자(빈도)를 임의로 바꾸지 않는다.
+            각 제안의 조건:
+            - 50~70자, "~해보세요" 체로 끝맺는다.
+            - 반드시 입력값 하나 이상을 근거로 삼는다 (현재 빈도, 보유 항목, 과목명 등).
+            - 이미 하고 있는 것을 다시 하라고 하지 않는다. 월 4~6회 읽는 학생에게
+              "논문을 읽어보세요"는 금지이고, 그 다음 단계를 제시한다.
+            - 측정 가능한 행동으로 끝낸다. 무엇을 어느 정도 할지가 드러나야 한다.
+            - 숫자 점수를 문장에 쓰지 않는다. "경험 1.3점" 대신 "경험이 아직 적으니"처럼 말로 쓴다.
+            - 관심 분야의 "CV"는 컴퓨터비전이고 "아직 없는 것"의 "CV(이력서)"와 다르다.
+              둘을 같은 문장에 섞지 않는다.
+            - 과장 표현과 이모지를 쓰지 않는다.
         `;
 
-        const userPrompt = `
-            stage: ${params.stage}
-            interestFields: ${params.interestFields.join(', ')}
-            현재 논문 읽기 빈도: ${params.paperFrequencyLabel}
-            현재 대외 경험: ${params.externalActivityLabel}
-            strengths: ${params.strengths.join(', ') || '없음'}
-            weaknesses: ${params.weaknesses.join(', ') || '없음'}
-            radar(각 0~10):
-              이해도: ${params.radar.interest}
-              경험: ${params.radar.experience}
-              논문 루틴: ${params.radar.paper}
-              포트폴리오: ${params.radar.preparation}
-              성적: ${params.radar.academic}
-        `;
+        const userPrompt = this.buildRoadmapUserContext(params);
 
         try {
             const response = await this.openai.chat.completions.create({
@@ -1098,7 +1130,7 @@ export class AiServicesService {
                       (t: unknown) => typeof t === 'string' && t.trim(),
                   )
                 : [];
-            return tips.length === 2 ? tips : fallback;
+            return tips.length === 3 ? tips : fallback;
         } catch (e) {
             // GPT 호출/파싱 실패 시에도 로드맵 생성은 계속되도록 fallback 문구 사용
             return fallback;
@@ -1106,14 +1138,39 @@ export class AiServicesService {
     }
 }
 
-// 로드맵 종합 코멘트 생성 입력값
-export interface RoadmapCommentParams {
-    totalScore: number;
+// 로드맵 코멘트/성장 가이드가 공통으로 받는 사용자 상태.
+// 의존성 방향을 위해 roadmap 타입을 import 하지 않고 원시값으로만 받는다.
+export interface RoadmapUserContext {
     stage: string;
+    year: number; // Q1 학년
+    semester: number; // Q1 학기
     interestFields: string[];
     strengths: string[];
     weaknesses: string[];
     radar: {
+        interest: number;
+        experience: number;
+        paper: number;
+        preparation: number;
+        academic: number;
+    };
+    // radar.paper는 Q7(읽는 양)과 Q8(이해도)의 평균이라 둘 중 어느 쪽이 낮은지 알 수 없다.
+    // 처방이 정반대이므로 원점수를 따로 넘긴다.
+    // 숫자를 넘기면 GPT가 "경험 1.3점" 처럼 사용자에게 그대로 노출하므로,
+    // 프롬프트에 들어가는 값은 전부 roadmap 모듈에서 말로 바꿔 넘긴다.
+    interestFieldLabels: string[]; // 'CV(컴퓨터비전, cs.CV)' 형태
+    levelSummary: string; // '관심 분야 이해 보통 / 연구·프로젝트 경험 매우 낮음 / ...'
+    lowestArea: string; // 가장 낮은 항목 이름. GPT가 고르지 않고 이 값을 그대로 쓴다
+    paperReadingState: string; // 읽는 양과 이해 수준의 조합을 설명한 문장
+    externalActivityLabel: string; // Q9+Q10 선택 개수를 바꾼 값 (예: '3~5회')
+    preparedItems: string[]; // Q9에서 고른 항목
+    missingItems: string[]; // Q9 전체 보기에서 고르지 않은 항목 (바로 제안할 다음 할 일)
+    presentationItems: string[]; // Q10에서 고른 항목
+    recommendedCourses: string[]; // 관심분야와 겹치는 전공과목 이름
+    recommendedCourseNote: string; // 그 과목들을 언제 들을 수 있는지 (예: '3학년 1학기 개설')
+    recommendedPaperTitle?: string; // 논문 로드맵 1순위 논문 제목
+    previousRadar?: {
+        // 수정일 때만. 최초 생성이면 undefined
         interest: number;
         experience: number;
         paper: number;
@@ -1122,20 +1179,11 @@ export interface RoadmapCommentParams {
     };
 }
 
+// 로드맵 종합 코멘트 생성 입력값
+export interface RoadmapCommentParams extends RoadmapUserContext {
+    totalScore: number;
+}
+
 // 로드맵 성장 가이드(tips) 생성 입력값
 // paperFrequencyLabel/externalActivityLabel은 roadmap 모듈에서 답변을 기반으로 미리 계산해 전달한다.
-export interface RoadmapGrowthGuideParams {
-    stage: string;
-    interestFields: string[];
-    paperFrequencyLabel: string;
-    externalActivityLabel: string;
-    strengths: string[];
-    weaknesses: string[];
-    radar: {
-        interest: number;
-        experience: number;
-        paper: number;
-        preparation: number;
-        academic: number;
-    };
-}
+export type RoadmapGrowthGuideParams = RoadmapUserContext;
