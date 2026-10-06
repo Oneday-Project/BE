@@ -26,6 +26,22 @@ const INTEREST_FIELDS = [
     'Code AI',
 ] as const;
 
+// 관심 분야 태그의 한글 명칭. research_field 테이블의 arXiv 분류 코드를 기준으로 붙였다.
+// GPT 프롬프트에서 태그 약어를 그대로 쓰면 CV(컴퓨터비전)와 Q9의 CV(이력서)가 섞이므로
+// 반드시 이 명칭을 함께 넘긴다.
+export const INTEREST_FIELD_LABELS: Record<string, string> = {
+    SML: 'SML(통계적 기계학습, stat.ML)',
+    ML: 'ML(기계학습, cs.LG)',
+    CV: 'CV(컴퓨터비전, cs.CV)',
+    NLP: 'NLP(자연어처리, cs.CL)',
+    Robotics: 'Robotics(로보틱스, cs.RO)',
+    'Retrieval AI': 'Retrieval AI(정보검색, cs.IR)',
+    SAP: 'SAP(음향·신호 처리, cs.SD)',
+    HCI: 'HCI(인간-컴퓨터 상호작용, cs.HC)',
+    Multimodal: 'Multimodal(멀티모달, cs.MM)',
+    'Code AI': 'Code AI(소프트웨어공학, cs.SE)',
+};
+
 // Q9 대외 활동 - 준비된 항목 (복수 선택)
 export const Q9_NONE = '아직 아무 것도 없어요';
 export const Q9_OPTIONS = [
