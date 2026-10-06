@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Min } from 'class-validator';
 
 export enum LibraryTypeEnum {
   BOOKMARK = 'bookmark',
@@ -34,7 +34,6 @@ export class GetLibraryDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
   @IsOptional()
   take: number = 8;
 }
