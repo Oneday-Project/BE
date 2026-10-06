@@ -1,7 +1,7 @@
 import { Column, Entity, ManyToMany, PrimaryGeneratedColumn } from "typeorm";
 import { Paper } from "../../papers/entities/papers.entity";
 import { BaseModel } from "src/common/entities/base.entity";
-import { AlumniPost } from "src/community/alumni/entities/alumni-post.entity";
+import { GradInfo } from "src/grad-info/entities/grad-info.entity";
 
 @Entity()
 export class ResearchField extends BaseModel{
@@ -22,6 +22,6 @@ export class ResearchField extends BaseModel{
     @ManyToMany(() => Paper, (paper) => paper.researchFields)
     papers!: Paper[];
 
-    @ManyToMany(() => AlumniPost, (post) => post.researchFields)
-    alumniPosts!: AlumniPost[];
+    @ManyToMany(() => GradInfo, (gradInfo) => gradInfo.researchFields)
+    gradInfos!: GradInfo[];
 }

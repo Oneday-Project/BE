@@ -10,8 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { envVariableKeys } from 'src/common/const/env.const';
 import { Paper } from 'src/papers/entities/papers.entity';
 import { HaiPaper } from 'src/papers/entities/hai-papers.entity';
-import { BoardPost } from 'src/community/board/entities/board-post.entity';
-import { AlumniPost } from 'src/community/alumni/entities/alumni-post.entity';
+import { GradInfo } from 'src/grad-info/entities/grad-info.entity';
 import { createHash } from 'crypto';
 import OpenAI from 'openai';
 
@@ -22,7 +21,7 @@ export class AiServicesService {
     private readonly gptModel = 'gpt-5.4-mini'; // 기본 논문 AI 요약에 사용하는 모델
     private readonly embeddingModel = 'text-embedding-3-large'; // 논문 임베딩 벡터 생성에 사용하는 모델
     private readonly defaultBatchSize = 20; // 배치 처리 시 한 번에 동시 처리할 논문 수
-    private readonly embeddingTimeoutMs = 15000; // 게시물 임베딩 1건의 상한(사용자 요청 안에서 실행되므로 짧게)
+    private readonly embeddingTimeoutMs = 15000; // 진학 정보 임베딩 1건의 상한(배치가 한 건에 오래 매달리지 않도록)
 
     constructor(
         @InjectRepository(PaperAiSummary)
@@ -33,10 +32,8 @@ export class AiServicesService {
         private readonly papersRepository: Repository<Paper>,
         @InjectRepository(HaiPaper)
         private readonly haiPapersRepository: Repository<HaiPaper>,
-        @InjectRepository(BoardPost)
-        private readonly postsRepository: Repository<BoardPost>,
-        @InjectRepository(AlumniPost)
-        private readonly alumniPostsRepository: Repository<AlumniPost>,
+        @InjectRepository(GradInfo)
+        private readonly gradInfoRepository: Repository<GradInfo>,
         private readonly papersService: PapersService,
         private readonly haiPapersService: HaiPapersService,
         private readonly configService: ConfigService,
@@ -757,122 +754,48 @@ export class AiServicesService {
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
-    // 3-2. 커뮤니티 게시물 임베딩 (챗봇이 논문뿐 아니라 커뮤니티 글도 검색하기 위한 것)
-    // 논문과 달리 사용자가 그때그때 쓰는 글이라, 배치가 아니라 작성·수정 직후에 바로 생성한다.
+    // 3-2. 대학원 진학 정보 임베딩 (챗봇이 논문뿐 아니라 진학 정보도 검색하기 위한 것)
+    // 관리자가 DB에 직접 넣는 자료라 작성 시점에 임베딩을 만들 곳이 없다. 그래서 논문처럼
+    // 배치 API로 생성한다 — 넣거나 고친 뒤 한 번 실행하면 바뀐 자료만 다시 임베딩된다.
 
-    // 게시물 1건의 임베딩을 생성/갱신한다. 임베딩 실패가 글쓰기 자체를 막으면 안 되므로
-    // 예외를 밖으로 던지지 않고 로그만 남긴다(누락분은 아래 백필 API로 채운다).
-    async syncPostEmbedding(postId: number) {
-        try {
-            const post = await this.postsRepository.findOne({
-                where: { id: postId },
-                select: { id: true, title: true, content: true },
-            });
-
-            if (!post) return;
-
-            await this.embedAndSavePost(post);
-        } catch (e) {
-            this.logger.warn(`게시물(${postId}) 임베딩 생성 실패 — ${this.toErrorMessage(e)}`);
-        }
-    }
-
-    // 선배 발자취 게시물 1건의 임베딩을 생성/갱신한다(실패 시 로그만 남기는 것도 동일).
-    async syncAlumniPostEmbedding(postId: number) {
-        try {
-            const post = await this.alumniPostsRepository.findOne({
-                where: { id: postId },
-                select: {
-                    id: true,
-                    title: true,
-                    content: true,
-                    gradSchoolName: true,
-                    gradSchoolDept: true,
-                    researchFields: { name: true },
-                },
-                relations: { researchFields: true },
-            });
-
-            if (!post) return;
-
-            await this.embedAndSaveAlumniPost(post);
-        } catch (e) {
-            this.logger.warn(`선배 발자취 게시물(${postId}) 임베딩 생성 실패 — ${this.toErrorMessage(e)}`);
-        }
-    }
-
-    // 임베딩이 없거나 내용과 어긋난 게시물을 찾아 백필한다.
-    // "없는 것"만 대상으로 하면, 글을 수정했는데 실시간 재생성이 실패한 경우 옛 임베딩이 그대로
-    // 남아 영영 복구되지 않는다(챗봇이 사라진 옛 내용으로 그 글을 계속 인용하게 된다).
-    // updatedAt 비교는 쓰지 않는다 — 좋아요만 눌러도 updatedAt이 바뀌어서 내용이 그대로인 글까지
-    // 다시 임베딩하게 된다. 대신 임베딩에 넣었던 텍스트의 해시를 저장해두고 지금 텍스트와 비교한다.
-    async generateAllPostEmbeddings(batchSize?: number) {
+    // 임베딩이 없거나 내용과 어긋난 진학 정보를 찾아 생성/갱신한다.
+    // "없는 것"만 대상으로 하면, 자료를 고쳤을 때 옛 임베딩이 그대로 남아 챗봇이 사라진 옛 내용을
+    // 계속 인용하게 된다. updatedAt 비교도 쓰지 않는다(내용과 무관한 수정에도 값이 바뀐다).
+    // 대신 임베딩에 넣었던 텍스트의 해시를 저장해두고 지금 텍스트와 비교한다.
+    async generateAllGradInfoEmbeddings(batchSize?: number) {
         const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
 
-        const all = await this.postsRepository.find({
-            select: { id: true, title: true, content: true, embeddingHash: true },
-        });
-
-        const posts = all.filter(
-            (post) => post.embeddingHash !== this.hashOf(this.buildPostEmbeddingInput(post)),
-        );
-
-        if (posts.length === 0) {
-            return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
-        }
-
-        const { success, retried, failures } = await this.runInBatches(
-            posts,
-            size,
-            (post) => post.id,
-            (post) => this.embedAndSavePost(post),
-        );
-
-        return {
-            total: posts.length,
-            success,
-            retried,
-            failed: failures.length,
-            batchSize: size,
-            failures,
-        };
-    }
-
-    // 임베딩이 없거나 내용과 어긋난 선배 발자취 게시물 백필(판별 방식은 위와 동일)
-    async generateAllAlumniPostEmbeddings(batchSize?: number) {
-        const size = batchSize && batchSize > 0 ? batchSize : this.defaultBatchSize;
-
-        const all = await this.alumniPostsRepository.find({
+        const all = await this.gradInfoRepository.find({
             select: {
                 id: true,
                 title: true,
                 content: true,
-                gradSchoolName: true,
-                gradSchoolDept: true,
+                schoolName: true,
+                department: true,
                 embeddingHash: true,
                 researchFields: { name: true },
             },
             relations: { researchFields: true },
         });
 
-        const posts = all.filter(
-            (post) =>
-                post.embeddingHash !== this.hashOf(this.buildAlumniPostEmbeddingInput(post)),
+        const targets = all.filter(
+            (gradInfo) =>
+                gradInfo.embeddingHash !== this.hashOf(this.buildGradInfoEmbeddingInput(gradInfo)),
         );
 
-        if (posts.length === 0) {
+        if (targets.length === 0) {
             return { total: 0, success: 0, retried: 0, failed: 0, batchSize: size, failures: [] };
         }
 
         const { success, retried, failures } = await this.runInBatches(
-            posts,
+            targets,
             size,
-            (post) => post.id,
-            (post) => this.embedAndSaveAlumniPost(post),
+            (gradInfo) => gradInfo.id,
+            (gradInfo) => this.embedAndSaveGradInfo(gradInfo),
         );
 
         return {
-            total: posts.length,
+            total: targets.length,
             success,
             retried,
             failed: failures.length,
@@ -881,28 +804,26 @@ export class AiServicesService {
         };
     }
 
-    // 임베딩에 넣을 텍스트를 만드는 곳은 여기 하나뿐이어야 한다. 백필이 "내용이 바뀌었는지"를
+    // 임베딩에 넣을 텍스트를 만드는 곳은 여기 하나뿐이어야 한다. 배치가 "내용이 바뀌었는지"를
     // 이 텍스트의 해시로 판별하기 때문에, 생성 시점과 비교 시점의 텍스트가 다르면 매번 전부
     // 다시 임베딩하게 된다.
-    private buildPostEmbeddingInput(post: Pick<BoardPost, 'title' | 'content'>) {
-        return `${post.title}\n\n${post.content}`;
-    }
-
-    // 선배 발자취는 진학한 대학원·학과가 질문("선배들 어디 갔어?")의 핵심이고,
-    // 분야 태그는 "CV 쪽으로 간 선배 있어?" 같은 질문에서 본문에 그 단어가 없어도 매칭되게 해준다.
-    private buildAlumniPostEmbeddingInput(
-        post: Pick<
-            AlumniPost,
-            'title' | 'content' | 'gradSchoolName' | 'gradSchoolDept' | 'researchFields'
+    //
+    // 제목·본문 외에 대학원·학과와 분야 태그도 넣는다. "선배들 어디 갔어?", "CV 쪽으로 간 선배
+    // 있어?" 같은 질문은 본문에 그 단어가 없어도 이 값들로 매칭돼야 하기 때문이다.
+    private buildGradInfoEmbeddingInput(
+        gradInfo: Pick<
+            GradInfo,
+            'title' | 'content' | 'schoolName' | 'department' | 'researchFields'
         >,
     ) {
-        const fields = (post.researchFields ?? []).map((field) => field.name).join(', ');
+        const fields = (gradInfo.researchFields ?? []).map((field) => field.name).join(', ');
+        const school = [gradInfo.schoolName, gradInfo.department].filter(Boolean).join(' ');
 
         return [
-            post.title,
-            `진학: ${post.gradSchoolName ?? '비공개'} ${post.gradSchoolDept}`,
+            gradInfo.title,
+            school ? `대학원: ${school}` : null,
             fields ? `연구 분야: ${fields}` : null,
-            post.content,
+            gradInfo.content,
         ]
             .filter(Boolean)
             .join('\n\n');
@@ -912,35 +833,24 @@ export class AiServicesService {
         return createHash('sha256').update(input).digest('hex');
     }
 
-    private async embedAndSavePost(post: Pick<BoardPost, 'id' | 'title' | 'content'>) {
-        const input = this.buildPostEmbeddingInput(post);
-        const embedding = await this.createEmbedding(input);
-
-        await this.postsRepository.update(
-            { id: post.id },
-            { embedding, embeddingHash: this.hashOf(input) },
-        );
-    }
-
-    private async embedAndSaveAlumniPost(
-        post: Pick<
-            AlumniPost,
-            'id' | 'title' | 'content' | 'gradSchoolName' | 'gradSchoolDept' | 'researchFields'
+    private async embedAndSaveGradInfo(
+        gradInfo: Pick<
+            GradInfo,
+            'id' | 'title' | 'content' | 'schoolName' | 'department' | 'researchFields'
         >,
     ) {
-        const input = this.buildAlumniPostEmbeddingInput(post);
+        const input = this.buildGradInfoEmbeddingInput(gradInfo);
         const embedding = await this.createEmbedding(input);
 
-        await this.alumniPostsRepository.update(
-            { id: post.id },
+        await this.gradInfoRepository.update(
+            { id: gradInfo.id },
             { embedding, embeddingHash: this.hashOf(input) },
         );
     }
 
-    // 이 임베딩은 게시물 작성·수정 요청 안에서 await된다. OpenAI SDK 기본값은 타임아웃 600초에
-    // 재시도 2회라, API가 지연되면 사용자의 글쓰기가 수 분간 멈춘다. 여기서만 짧은 타임아웃을
-    // 건다(클라이언트 전역에 걸면 오래 걸리는 논문 요약 호출이 끊긴다). 실패해도 호출부가
-    // 예외를 삼키고 글은 저장되며, 누락된 임베딩은 백필 API로 채운다.
+    // OpenAI SDK 기본값은 타임아웃 600초에 재시도 2회라, API가 지연되면 배치 한 건이 수 분간
+    // 매달려 있게 된다. 여기서만 짧은 타임아웃을 건다(클라이언트 전역에 걸면 오래 걸리는 논문
+    // 요약 호출이 끊긴다). 실패한 건은 배치 결과의 failures에 담기고, 다시 실행하면 채워진다.
     private async createEmbedding(input: string) {
         const response = await this.openai.embeddings.create(
             {

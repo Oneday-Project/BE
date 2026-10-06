@@ -36,18 +36,8 @@ import { HaiPaperAiSummary } from './ai-services/entities/hai-paper-ai-summaries
 import { RoadmapModule } from './roadmap/roadmap.module';
 import { RoadmapTask } from './roadmap/entities/roadmap-task.entity';
 import { UserRoadmap } from './roadmap/entities/user-roadmap.entity';
-import { BoardCategory } from './community/board/entities/board-category.entity';
-import { BoardPost } from './community/board/entities/board-post.entity';
-import { BoardComment } from './community/board/entities/board-comment.entity';
-import { BoardPostLike } from './community/board/entities/board-post-like.entity';
-import { BoardCommentLike } from './community/board/entities/board-comment-like.entity';
-import { BoardModule } from './community/board/board.module';
-import { AlumniPost } from './community/alumni/entities/alumni-post.entity';
-import { AlumniComment } from './community/alumni/entities/alumni-comment.entity';
-import { AlumniPostLike } from './community/alumni/entities/alumni-post-like.entity';
-import { AlumniCommentLike } from './community/alumni/entities/alumni-comment-like.entity';
-import { AlumniModule } from './community/alumni/alumni.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
+import { GradInfo } from './grad-info/entities/grad-info.entity';
 
 @Module({
   imports: [
@@ -97,17 +87,9 @@ import { ChatbotModule } from './chatbot/chatbot.module';
           HaiPaperBookmark,
           HaiPaperReadingStatus,
           HaiPaperActivityLog,
-          BoardCategory,
-          BoardPost,
-          BoardComment,
-          BoardPostLike,
-          BoardCommentLike,
-          AlumniPost,
-          AlumniComment,
-          AlumniPostLike,
-          AlumniCommentLike,
+          GradInfo,
         ],
-        synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? false: true, 
+        synchronize: configService.get<string>(envVariableKeys.env) === 'prod' ? true: true, 
         ssl: configService.get<string>(envVariableKeys.env) === 'prod'? { rejectUnauthorized: false } : false,
       }),
       inject: [ConfigService]
@@ -119,8 +101,6 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     UsersModule,
     AuthModule, AiServicesModule, ResearchFieldsModule,
     RoadmapModule,
-    BoardModule,
-    AlumniModule,
     ChatbotModule,
   ],
   controllers: [AppController],
