@@ -24,6 +24,10 @@ interface SimilarContentRow {
   citationCount: number;
   publishedDate: string | null;
   researchFields?: string; // 분야 태그(쉼표로 이어붙임) — gradInfo에만 채워진다
+  // 아래는 hai(휴먼AI공학전공 논문)에만 채워진다
+  lab?: string | null; // 연구실(어느 교수 연구실인지)
+  advisor?: string | null; // 지도교수
+  authors?: string | null; // 저자(simple-json 문자열)
   // 아래는 gradInfo에만 채워진다
   category?: GradInfoCategory; // 선배 사례인지 공식 정보인지 — 답변 규칙이 달라진다
   referenceYear?: number | null; // 정보 기준 연도
@@ -96,6 +100,14 @@ export class ChatbotService {
 - 논문과 진학 정보를 함께 언급할 때는 어느 쪽이 논문이고 어느 쪽이 진학 정보인지 분명히 구분해서 말해라. 진학 정보를 논문처럼 소개하지 마라.
 - 진학 정보는 아래 [답변 형식]의 논문 추천 형식(추천 목록, "처음 한 편을 고른다면")을 따르지 않는다. 답변 문장 속에서 자연스럽게 녹여서 말해라.
 - 자료의 출처나 제목을 "출처:" 처럼 따로 표시하지 마라. 답변 문장 안에서 내용만 전하면 된다.
+
+[휴먼AI공학전공 논문 사용 규칙]
+[자료 목록]에 [휴먼AI공학전공 논문]으로 표시된 항목은 상명대학교 휴먼AI공학전공에서 나온 논문이다(학위논문이나 전공 소속 연구실의 논문).
+- "우리 과 논문", "우리 학교 논문", "○○○ 교수님 논문", "○○○ 교수님 연구실 논문" 같은 질문에는 이 항목들을 우선해서 답해라. 외부 논문([논문])으로 대신 답하지 마라.
+- 각 항목에는 어느 교수 연구실에서 나온 논문인지(연구실)와 저자가 함께 적혀 있다. 교수님 이름으로 물었다면 그 교수님의 연구실 논문만 골라라. 이름이 다르면 그 교수님 논문이 아니다.
+- 지목한 교수님의 논문이 목록에 하나도 없으면 "그 교수님 논문은 지금 등록된 자료에서 찾지 못했다"고 분명히 밝혀라. 다른 교수님 논문을 대신 내놓지 마라.
+- 이 논문들은 인용수 정보가 없다. 인용수를 지어내거나 영향력을 단정하지 마라.
+- 외부 논문과 함께 소개할 때는 어느 쪽이 우리 전공 논문인지 분명히 구분해서 말해라.
 
 [내용·난이도를 말하는 방법]
 - 논문이 다루는 내용(주제, 방법론, 다루는 문제)은 그 논문의 초록에 실제로 적힌 것에만 근거해서 말해라. 초록에 없는 내용을 지어내지 마라.
@@ -346,6 +358,9 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
                    1 - (p.embedding::vector <=> $1::vector) AS similarity,
                    p.citation_count AS "citationCount",
                    p.published_date AS "publishedDate",
+                   NULL::varchar AS lab,
+                   NULL::varchar AS advisor,
+                   NULL::text AS authors,
                    NULL::varchar AS category,
                    NULL::int AS "referenceYear",
                    NULL::int AS "admissionYear",
@@ -356,7 +371,10 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
             SELECT 'hai' AS type, h.id::text AS id, h.title, h.abstract AS body,
                    1 - (h.embedding::vector <=> $1::vector) AS similarity,
                    0 AS "citationCount",
-                   NULL::text AS "publishedDate",
+                   h.published_year AS "publishedDate",
+                   h.department AS lab,
+                   h.academic_advisor AS advisor,
+                   h.authors::text AS authors,
                    NULL::varchar AS category,
                    NULL::int AS "referenceYear",
                    NULL::int AS "admissionYear",
@@ -369,6 +387,9 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
                    1 - (g.embedding::vector <=> $1::vector) AS similarity,
                    0 AS "citationCount",
                    to_char(g."createdAt", 'YYYY-MM-DD') AS "publishedDate",
+                   NULL::varchar AS lab,
+                   NULL::varchar AS advisor,
+                   NULL::text AS authors,
                    g.category,
                    g."referenceYear",
                    g."admissionYear",
@@ -445,6 +466,19 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     return JSON.stringify(response.data[0].embedding);
   }
 
+  // hai_paper의 authors는 simple-json이라 DB에서 '["홍길동","김철수"]' 같은 문자열로 온다.
+  // 그대로 프롬프트에 넣으면 지저분하므로 사람이 읽는 형태로 바꾼다.
+  private formatAuthors(authors?: string | null) {
+    if (!authors) return null;
+
+    try {
+      const parsed = JSON.parse(authors) as string[];
+      return parsed.length > 0 ? `저자 ${parsed.join(', ')}` : null;
+    } catch {
+      return `저자 ${authors}`;
+    }
+  }
+
   private buildSystemPrompt(candidates: SimilarContentRow[]): string {
     if (candidates.length === 0) {
       return `${this.systemPromptBase}\n\n[자료 목록]\n없음`;
@@ -470,6 +504,19 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
             .join(', ');
 
           return `${i + 1}. [진학 정보 - ${label}] 제목: ${c.title}${meta ? `\n   ${meta}` : ''}\n   내용: ${c.body}`;
+        }
+
+        if (c.type === 'hai') {
+          const meta = [
+            c.lab ? `연구실 ${c.lab}` : null,
+            c.advisor ? `지도교수 ${c.advisor}` : null,
+            this.formatAuthors(c.authors),
+            c.publishedDate ? `발표년도 ${c.publishedDate.slice(0, 4)}` : null,
+          ]
+            .filter(Boolean)
+            .join(', ');
+
+          return `${i + 1}. [휴먼AI공학전공 논문] 제목: ${c.title}${meta ? `\n   ${meta}` : ''}\n   초록: ${c.body}`;
         }
 
         const meta = [

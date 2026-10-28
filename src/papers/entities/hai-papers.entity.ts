@@ -27,7 +27,7 @@ export class HaiPaper extends BaseModel {
   academic_advisor!: string; // 지도 교수
 
   @Column({ nullable: true })
-  department!: string; // 학과
+  department!: string; // 연구실(어느 교수 연구실인지)
 
   @Column({ type: 'text', nullable: false })
   abstract!: string; // 초록
