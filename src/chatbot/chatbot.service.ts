@@ -115,7 +115,7 @@ export class ChatbotService {
 [분야·기간을 지목한 질문 처리]
 사용자가 분야나 기간을 지목하면([자료 목록]이 그 조건으로 걸러져 올 수 있다) 아래를 지켜라.
 - 목록에 있는 논문만 소개하고, 조건에 맞는 논문이 하나도 없으면 "그 조건에 맞는 논문은 H-AI Grad에 아직 없다"고 분명히 밝혀라. 조건에서 벗어난 논문을 대신 추천하지 마라.
-- 발표년도나 발행일을 말할 때는 자료에 적힌 값만 쓰고, 적혀 있지 않으면 시기를 단정하지 마라.
+- 자료에 "발행일 2026-01-14"처럼 날짜가 적혀 있으면 그 날짜가 정확한 발행일이다. 월까지 물었다면 그 날짜를 근거로 답해라. "발표년도"만 적힌 자료는 연도까지만 말할 수 있다.
 - "최신"이나 "최근"을 물었다면 목록이 최신순으로 정렬되어 올 수 있다. 이때도 질문 주제와 동떨어진 논문은 빼라.
 - 조건에 맞는 논문이 한 편뿐이면 한 편만 소개하고, 억지로 수를 채우지 마라.
 
@@ -662,6 +662,14 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     }
   }
 
+  private formatPublished(publishedDate?: string | null) {
+    if (!publishedDate) return null;
+
+    return /^\d{4}-\d{2}-\d{2}$/.test(publishedDate)
+      ? `발행일 ${publishedDate}`
+      : `발표년도 ${publishedDate.slice(0, 4)}`;
+  }
+
   private buildSystemPrompt(candidates: SimilarContentRow[]): string {
     if (candidates.length === 0) {
       return `${this.systemPromptBase}\n\n[자료 목록]\n없음`;
@@ -693,7 +701,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
           const meta = [
             c.lab ? `${c.lab} (지도교수 연구실)` : null,
             this.formatAuthors(c.authors),
-            c.publishedDate ? `발표년도 ${c.publishedDate.slice(0, 4)}` : null,
+            this.formatPublished(c.publishedDate),
           ]
             .filter(Boolean)
             .join(', ');
@@ -703,7 +711,9 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
 
         const meta = [
           c.citationCount ? `인용수 ${c.citationCount}회` : null,
-          c.publishedDate ? `발표년도 ${c.publishedDate.slice(0, 4)}` : null,
+          // arXiv 논문은 발행일이 YYYY-MM-DD로 있다. 연도만 넘기면 "1월에 나온 논문" 같은
+          // 질문에 GPT가 월을 확인할 수 없다고 답하게 되므로 날짜를 그대로 넘긴다.
+          this.formatPublished(c.publishedDate),
         ]
           .filter(Boolean)
           .join(', ');
