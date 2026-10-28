@@ -25,8 +25,7 @@ interface SimilarContentRow {
   publishedDate: string | null;
   researchFields?: string; // 분야 태그(쉼표로 이어붙임) — gradInfo에만 채워진다
   // 아래는 hai(휴먼AI공학전공 논문)에만 채워진다
-  lab?: string | null; // 연구실(어느 교수 연구실인지)
-  advisor?: string | null; // 지도교수
+  lab?: string | null; // 연구실 = 지도교수 연구실(hai_paper.department)
   authors?: string | null; // 저자(simple-json 문자열)
   // 아래는 gradInfo에만 채워진다
   category?: GradInfoCategory; // 선배 사례인지 공식 정보인지 — 답변 규칙이 달라진다
@@ -359,7 +358,6 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
                    p.citation_count AS "citationCount",
                    p.published_date AS "publishedDate",
                    NULL::varchar AS lab,
-                   NULL::varchar AS advisor,
                    NULL::text AS authors,
                    NULL::varchar AS category,
                    NULL::int AS "referenceYear",
@@ -373,7 +371,6 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
                    0 AS "citationCount",
                    h.published_year AS "publishedDate",
                    h.department AS lab,
-                   h.academic_advisor AS advisor,
                    h.authors::text AS authors,
                    NULL::varchar AS category,
                    NULL::int AS "referenceYear",
@@ -388,7 +385,6 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
                    0 AS "citationCount",
                    to_char(g."createdAt", 'YYYY-MM-DD') AS "publishedDate",
                    NULL::varchar AS lab,
-                   NULL::varchar AS advisor,
                    NULL::text AS authors,
                    g.category,
                    g."referenceYear",
@@ -508,8 +504,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
 
         if (c.type === 'hai') {
           const meta = [
-            c.lab ? `연구실 ${c.lab}` : null,
-            c.advisor ? `지도교수 ${c.advisor}` : null,
+            c.lab ? `${c.lab} (지도교수 연구실)` : null,
             this.formatAuthors(c.authors),
             c.publishedDate ? `발표년도 ${c.publishedDate.slice(0, 4)}` : null,
           ]

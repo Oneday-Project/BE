@@ -706,7 +706,6 @@ export class AiServicesService {
                 abstract: true,
                 embedding: true,
                 department: true,
-                academic_advisor: true,
                 authors: true,
                 researchFields: true,
             },
@@ -739,7 +738,6 @@ export class AiServicesService {
                 title: true,
                 abstract: true,
                 department: true,
-                academic_advisor: true,
                 authors: true,
                 researchFields: true,
             },
@@ -769,11 +767,12 @@ export class AiServicesService {
     // 휴먼과 논문 1건에 대해 임베딩 벡터를 생성하고 저장(존재 여부 검사는 호출부 책임)
     // 휴먼AI공학전공 논문은 "이의철 교수님 연구실 논문 추천해줘" 처럼 사람 이름으로 찾는 경우가 많다.
     // 제목·초록만 임베딩하면 교수님 이름이 벡터에 없어서 그런 질문이 걸리지 않으므로,
-    // 연구실(department 컬럼에 어느 교수 연구실인지 들어 있다)과 지도교수, 저자, 분야를 함께 넣는다.
+    // 연구실과 저자, 분야를 함께 넣는다.
+    // 지도교수는 academic_advisor가 아니라 department(= 어느 교수 연구실인지)에 들어 있다.
     private buildHaiPaperEmbeddingInput(
         haiPaper: Pick<
             HaiPaper,
-            'title' | 'abstract' | 'department' | 'academic_advisor' | 'authors' | 'researchFields'
+            'title' | 'abstract' | 'department' | 'authors' | 'researchFields'
         >,
     ) {
         const authors = (haiPaper.authors ?? []).join(', ');
@@ -781,8 +780,7 @@ export class AiServicesService {
 
         return [
             haiPaper.title,
-            haiPaper.department ? `연구실: ${haiPaper.department}` : null,
-            haiPaper.academic_advisor ? `지도교수: ${haiPaper.academic_advisor}` : null,
+            haiPaper.department ? `연구실: ${haiPaper.department} (지도교수 연구실)` : null,
             authors ? `저자: ${authors}` : null,
             fields ? `연구 분야: ${fields}` : null,
             haiPaper.abstract,
@@ -794,13 +792,7 @@ export class AiServicesService {
     private async embedAndSaveHaiPaper(
         haiPaper: Pick<
             HaiPaper,
-            | 'id'
-            | 'title'
-            | 'abstract'
-            | 'department'
-            | 'academic_advisor'
-            | 'authors'
-            | 'researchFields'
+            'id' | 'title' | 'abstract' | 'department' | 'authors' | 'researchFields'
         >,
     ) {
         const input = this.buildHaiPaperEmbeddingInput(haiPaper);
