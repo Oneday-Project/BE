@@ -59,6 +59,9 @@ export class ChatbotService {
   private readonly maxSources = 5;
   // 특정 교수 연구실을 지목한 질문은 그 연구실 논문을 최대한 모아서 넘긴다("모두 알려줘" 대응).
   private readonly maxLabPapers = 10;
+  // 분야·기간을 지목한 질문도 "모두 나열해줘"가 많아 일반 검색보다 넉넉히 넘긴다.
+  // 본문(초록)이 함께 들어가므로 무작정 늘리면 요청 토큰과 비용이 커진다.
+  private readonly maxFilteredPapers = 10;
   // 입문용 요청일 때는 넉넉히 뽑은 뒤 rerankForFoundational()로 재정렬해서 상위 maxSources개만 쓴다.
   private readonly beginnerFriendlyPoolSize = 20;
   // 대화를 저장하지 않고 프론트가 history를 매번 보내는 구조라, 길이 제한이 없으면 대화가 길어질수록
@@ -215,11 +218,14 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     // 검색이 실패해도(임베딩 API 오류, DB 일시 장애) 대화를 끊지 않는다. 진학 상담처럼 자료
     // 없이도 답할 수 있는 질문이 많으므로, 자료 없는 경로로 떨어뜨려 답변은 내보낸다.
     let candidates: SimilarContentRow[] = [];
+    let searchNote = ''; // 조건 검색일 때 "총 몇 편 중 몇 편" 같은 안내
     let searched = needsSearch;
 
     if (needsSearch) {
       try {
-        candidates = await this.searchCandidates(hyde);
+        const result = await this.searchCandidates(hyde);
+        candidates = result.candidates;
+        searchNote = result.note;
       } catch (e) {
         this.logger.warn(
           `자료 검색 실패, 자료 없이 답변합니다: ${(e as Error).message}`,
@@ -244,7 +250,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       {
         role: 'system',
         content: searched
-          ? this.buildSystemPrompt(candidates)
+          ? this.buildSystemPrompt(candidates, searchNote)
           : this.systemPromptWithoutSearch,
       },
       ...(dto.history ?? []).slice(-this.maxHistoryMessages).map(
@@ -269,7 +275,9 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
   // 입문용 요청이면 넉넉히(20개) 뽑아서 인용수·연도 기반으로 재정렬한 뒤 상위 maxSources개만
   // 남긴다 — 순수 유사도만으로 20개를 그대로 넘기면 지엽적인 세부분야 논문이 섞여 관련성이
   // 오히려 떨어지는 경우가 실측으로 확인되었다.
-  private async searchCandidates(hyde: HydeResult): Promise<SimilarContentRow[]> {
+  private async searchCandidates(
+    hyde: HydeResult,
+  ): Promise<{ candidates: SimilarContentRow[]; note: string }> {
     const { hypotheticalDoc, wantsBeginnerFriendly, labName } = hyde;
     const questionEmbedding = await this.embedQuestion(hypotheticalDoc);
 
@@ -277,10 +285,17 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     // 유사도 상위 몇 건만 봐서는 조건을 지킬 수 없다(그 조건에 맞는 논문이 상위에 없을 수 있다).
     // 그래서 DB에서 직접 걸러서 찾는다. 분야·발행일이 모두 있는 arXiv 논문(paper)만 대상이다.
     if (hyde.fieldTag || hyde.dateFrom || hyde.dateTo || hyde.wantsRecent) {
-      const filtered = await this.findPapersByFilter(questionEmbedding, hyde);
+      const { rows, total } = await this.findPapersByFilter(questionEmbedding, hyde);
 
-      if (filtered.length > 0) {
-        return filtered;
+      if (rows.length > 0) {
+        // 조건에 맞는 논문이 넘겨준 수보다 많을 수 있다. 그 사실을 GPT에게 알려줘야
+        // "모두 나열해줘" 같은 질문에 몇 편 중 몇 편을 보여주는지 정확히 말할 수 있다.
+        const note =
+          total > rows.length
+            ? `조건에 맞는 논문은 모두 ${total}편이고, 그중 ${rows.length}편을 아래에 보여준다.`
+            : `조건에 맞는 논문은 아래 ${rows.length}편이 전부다.`;
+
+        return { candidates: rows, note };
       }
       // 조건에 맞는 논문이 없으면 일반 검색으로 떨어뜨린다.
       // (조건에 맞는 게 없다는 사실은 GPT가 목록을 보고 판단해 답한다)
@@ -297,7 +312,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       );
 
       if (labPapers.length > 0) {
-        return labPapers;
+        return { candidates: labPapers, note: '' };
       }
       // 그 이름의 연구실 논문이 없으면 일반 검색으로 떨어뜨린다.
       // (없다는 사실은 GPT가 목록을 보고 판단해 답한다)
@@ -312,7 +327,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       ? this.rerankForFoundational(pool).slice(0, this.maxSources)
       : pool;
 
-    return this.attachGradInfoResearchFields(candidates);
+    return { candidates: await this.attachGradInfoResearchFields(candidates), note: '' };
   }
 
   // 분야·기간 조건으로 arXiv 논문을 직접 걸러서 돌려준다.
@@ -323,41 +338,59 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
   private async findPapersByFilter(
     embedding: string,
     hyde: HydeResult,
-  ): Promise<SimilarContentRow[]> {
-    const conditions: string[] = ['p.embedding IS NOT NULL'];
-    const params: unknown[] = [embedding];
+  ): Promise<{ rows: SimilarContentRow[]; total: number }> {
+    // 조건은 두 쿼리(목록용, 개수용)에서 함께 쓰는데 두 쿼리의 파라미터 번호가 다르다.
+    // (목록 쿼리는 $1이 임베딩이라 조건이 $2부터 시작한다)
+    // 그래서 시작 번호를 받아 조건문을 만든다.
+    const buildConditions = (startIndex: number) => {
+      const conditions: string[] = ['p.embedding IS NOT NULL'];
+      const values: unknown[] = [];
+      const nextIndex = () => startIndex + values.length;
 
-    if (hyde.dateFrom) {
-      params.push(hyde.dateFrom);
-      conditions.push(`p.published_date >= $${params.length}`);
-    }
-
-    if (hyde.dateTo) {
-      params.push(hyde.dateTo);
-      conditions.push(`p.published_date <= $${params.length}`);
-    }
-
-    if (hyde.fieldTag) {
-      const relation = this.paperRepository.metadata.findRelationWithPropertyPath(
-        'researchFields',
-      );
-
-      if (relation?.joinTableName) {
-        const joinTable = relation.joinTableName;
-        const paperColumn = relation.joinColumns[0].databaseName;
-        const fieldColumn = relation.inverseJoinColumns[0].databaseName;
-
-        params.push(hyde.fieldTag);
-        conditions.push(
-          `EXISTS (
-             SELECT 1 FROM "${joinTable}" jt
-             JOIN research_field rf ON rf.id = jt."${fieldColumn}"
-             WHERE jt."${paperColumn}" = p."arxivId"
-               AND (rf.name = $${params.length} OR rf.tag = $${params.length})
-           )`,
-        );
+      if (hyde.dateFrom) {
+        conditions.push(`p.published_date >= $${nextIndex()}`);
+        values.push(hyde.dateFrom);
       }
-    }
+
+      if (hyde.dateTo) {
+        conditions.push(`p.published_date <= $${nextIndex()}`);
+        values.push(hyde.dateTo);
+      }
+
+      if (hyde.fieldTag) {
+        // 분야는 ManyToMany 조인 테이블을 봐야 한다. 테이블·컬럼 이름을 raw SQL에 하드코딩하면
+        // 엔티티가 바뀔 때 조용히 깨지므로 TypeORM 메타데이터에서 읽어 쓴다.
+        const relation =
+          this.paperRepository.metadata.findRelationWithPropertyPath('researchFields');
+
+        if (relation?.joinTableName) {
+          const joinTable = relation.joinTableName;
+          const paperColumn = relation.joinColumns[0].databaseName;
+          const fieldColumn = relation.inverseJoinColumns[0].databaseName;
+          const index = nextIndex();
+
+          conditions.push(
+            `EXISTS (
+               SELECT 1 FROM "${joinTable}" jt
+               JOIN research_field rf ON rf.id = jt."${fieldColumn}"
+               WHERE jt."${paperColumn}" = p."arxivId"
+                 AND (rf.name = $${index} OR rf.tag = $${index})
+             )`,
+          );
+          values.push(hyde.fieldTag);
+        }
+      }
+
+      return { where: conditions.join(' AND '), values };
+    };
+
+    // 조건에 맞는 전체 편수(상한과 무관). "모두 나열해줘"에 몇 편인지 말해주기 위한 값이다.
+    const countQuery = buildConditions(1);
+    const countRows: { count: string }[] = await this.paperRepository.query(
+      `SELECT count(*)::text AS count FROM paper p WHERE ${countQuery.where}`,
+      countQuery.values,
+    );
+    const total = Number(countRows[0]?.count ?? 0);
 
     // 기간을 못 박지 않은 "최신" 요청이면 발행일 순으로, 그 외에는 유사도 순으로 고른다.
     const orderBy =
@@ -365,9 +398,10 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
         ? 'p.published_date DESC'
         : 'similarity DESC';
 
-    params.push(this.maxSources);
+    const listQuery = buildConditions(2);
+    const params = [embedding, ...listQuery.values, this.maxFilteredPapers];
 
-    return this.paperRepository.query(
+    const rows: SimilarContentRow[] = await this.paperRepository.query(
       `SELECT 'arxiv' AS type, p."arxivId" AS id, p.title, p.abstract AS body,
               1 - (p.embedding::vector <=> $1::vector) AS similarity,
               p.citation_count AS "citationCount",
@@ -379,11 +413,13 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
               NULL::int AS "admissionYear",
               NULL::int AS "entryYear"
        FROM paper p
-       WHERE ${conditions.join(' AND ')}
+       WHERE ${listQuery.where}
        ORDER BY ${orderBy}
        LIMIT $${params.length}`,
       params,
     );
+
+    return { rows, total };
   }
 
   // 지목된 교수의 연구실 논문만 모아서 유사도 순으로 돌려준다.
@@ -670,7 +706,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       : `발표년도 ${publishedDate.slice(0, 4)}`;
   }
 
-  private buildSystemPrompt(candidates: SimilarContentRow[]): string {
+  private buildSystemPrompt(candidates: SimilarContentRow[], note = ''): string {
     if (candidates.length === 0) {
       return `${this.systemPromptBase}\n\n[자료 목록]\n없음`;
     }
@@ -722,6 +758,8 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       })
       .join('\n');
 
-    return `${this.systemPromptBase}\n\n[자료 목록]\n${list}`;
+    const header = note ? `[자료 목록] ${note}` : '[자료 목록]';
+
+    return `${this.systemPromptBase}\n\n${header}\n${list}`;
   }
 }
