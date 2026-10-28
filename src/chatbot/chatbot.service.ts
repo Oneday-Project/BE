@@ -38,6 +38,10 @@ interface HydeResult {
   hypotheticalDoc: string; // 논문 초록체 또는 진학 정보 문서체 — 질문에 답할 자료의 형태에 맞춘다
   wantsBeginnerFriendly: boolean;
   needsSearch: boolean;
+  // "이의철 교수님 연구실 논문" 처럼 특정 교수를 지목했을 때의 교수 이름(없으면 빈 문자열).
+  // 유사도 상위 몇 건만 뽑는 일반 검색으로는 그 연구실 논문을 다 모을 수 없어서,
+  // 이 값이 있으면 연구실로 직접 걸러서 찾는다.
+  labName: string;
 }
 
 @Injectable()
@@ -47,6 +51,8 @@ export class ChatbotService {
   private readonly gptModel = 'gpt-5.4-mini'; // ai-services와 동일한 모델
   private readonly embeddingModel = 'text-embedding-3-large';
   private readonly maxSources = 5;
+  // 특정 교수 연구실을 지목한 질문은 그 연구실 논문을 최대한 모아서 넘긴다("모두 알려줘" 대응).
+  private readonly maxLabPapers = 10;
   // 입문용 요청일 때는 넉넉히 뽑은 뒤 rerankForFoundational()로 재정렬해서 상위 maxSources개만 쓴다.
   private readonly beginnerFriendlyPoolSize = 20;
   // 대화를 저장하지 않고 프론트가 history를 매번 보내는 구조라, 길이 제한이 없으면 대화가 길어질수록
@@ -162,10 +168,12 @@ export class ChatbotService {
 - 진학 경험, 준비 과정, 어느 대학원에 갔는지, 입시 일정, 지원 제도처럼 논문이 아니라 진학 자료가 답이 될 질문이면, 논문 초록이 아니라 그 진학 정보 문서처럼 써라. 선배 사례를 찾는 질문이면 경험담처럼("저는 학부 3학년 때부터 학부연구생을 시작했고, 컨택은 이렇게 했습니다"), 입시나 제도를 찾는 질문이면 안내문처럼("전기 모집 원서 접수는 9월 중순이며 면접은 10월 말에 진행된다") 쓰면 된다. 문체가 실제 자료와 비슷할 때 검색이 잘 맞으므로, 이런 질문에 논문 초록체로 쓰면 안 된다.
 
 마지막으로, 이 질문에 답하려면 자료를 찾아봐야 하는지 판단해라(needsSearch). 논문·연구 주제를 찾는 질문은 물론이고, 진학 준비·경험·입시·연구실 컨택·지원 제도 관련 질문도 등록된 진학 정보에 답이 있을 수 있으니 true다. 논문과 대학원 어느 쪽과도 무관한 잡담(날씨, 인사, 다른 서비스 문의 등)일 때만 false다. 애매하면 true로 판단해라.
+질문이 특정 교수의 연구실 논문을 묻고 있으면(예: "이의철 교수님 연구실 논문 알려줘", "김동근 교수님 논문 추천해줘", "우리 과 권지은 교수님 연구는?") 그 교수의 이름만 labName에 담아라(예: "이의철"). 교수 이름이 없거나 특정 교수를 지목하지 않은 질문이면 빈 문자열("")로 둬라. 직함(교수님, 교수), 연구실, 랩 같은 말은 빼고 사람 이름만 담는다.
+
 needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 빈 문자열("")로 두고, 작성하느라 시간을 쓰지 마라.
 
 아래 JSON 형식으로만 답해라. 다른 설명은 절대 붙이지 마라.
-{"hypotheticalDoc": "가상의 논문 초록 또는 진학 정보 문서", "wantsBeginnerFriendly": true 또는 false, "needsSearch": true 또는 false}`;
+{"hypotheticalDoc": "가상의 논문 초록 또는 진학 정보 문서", "wantsBeginnerFriendly": true 또는 false, "needsSearch": true 또는 false, "labName": "교수 이름 또는 빈 문자열"}`;
 
   constructor(
     @InjectRepository(Paper)
@@ -180,7 +188,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
   }
 
   async ask(dto: ChatDto) {
-    const { hypotheticalDoc, wantsBeginnerFriendly, needsSearch } =
+    const { hypotheticalDoc, wantsBeginnerFriendly, needsSearch, labName } =
       await this.generateHypotheticalDoc(dto);
 
     // 날씨 같은 잡담처럼 자료가 필요 없는 질문은 임베딩·검색을 아예 건너뛴다. 본문 5편이
@@ -196,6 +204,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
         candidates = await this.searchCandidates(
           hypotheticalDoc,
           wantsBeginnerFriendly,
+          labName,
         );
       } catch (e) {
         this.logger.warn(
@@ -206,7 +215,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     }
 
     this.logger.log(
-      `question="${dto.question}" needsSearch=${needsSearch} wantsBeginnerFriendly=${wantsBeginnerFriendly} hyde="${
+      `question="${dto.question}" needsSearch=${needsSearch} wantsBeginnerFriendly=${wantsBeginnerFriendly} labName="${labName}" hyde="${
         needsSearch ? hypotheticalDoc : '(검색 안 함)'
       }" candidates=${
         candidates
@@ -249,8 +258,26 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
   private async searchCandidates(
     hypotheticalDoc: string,
     wantsBeginnerFriendly: boolean,
+    labName: string,
   ): Promise<SimilarContentRow[]> {
     const questionEmbedding = await this.embedQuestion(hypotheticalDoc);
+
+    // "○○ 교수님 연구실 논문 다 알려줘" 같은 질문은 유사도 상위 몇 건만 보면 답할 수 없다.
+    // 그 연구실 논문이 5편이어도 상위 5건에 한 편만 들어오면 한 편만 소개하게 된다.
+    // 그래서 교수를 지목한 질문은 연구실로 직접 걸러서 모은다.
+    if (labName) {
+      const labPapers = await this.findPapersByLab(
+        questionEmbedding,
+        labName,
+        this.maxLabPapers,
+      );
+
+      if (labPapers.length > 0) {
+        return labPapers;
+      }
+      // 그 이름의 연구실 논문이 없으면 일반 검색으로 떨어뜨린다.
+      // (없다는 사실은 GPT가 목록을 보고 판단해 답한다)
+    }
 
     const pool = await this.findSimilarContent(
       questionEmbedding,
@@ -262,6 +289,33 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       : pool;
 
     return this.attachGradInfoResearchFields(candidates);
+  }
+
+  // 지목된 교수의 연구실 논문만 모아서 유사도 순으로 돌려준다.
+  // hai_paper.department에 "이의철 연구실"처럼 어느 교수 연구실인지가 들어 있다.
+  private async findPapersByLab(
+    embedding: string,
+    labName: string,
+    limit: number,
+  ): Promise<SimilarContentRow[]> {
+    return this.paperRepository.query(
+      `SELECT 'hai' AS type, h.id::text AS id, h.title, h.abstract AS body,
+              1 - (h.embedding::vector <=> $1::vector) AS similarity,
+              0 AS "citationCount",
+              h.published_year AS "publishedDate",
+              h.department AS lab,
+              h.authors::text AS authors,
+              NULL::varchar AS category,
+              NULL::int AS "referenceYear",
+              NULL::int AS "admissionYear",
+              NULL::int AS "entryYear"
+       FROM hai_paper h
+       WHERE h.embedding IS NOT NULL
+         AND h.department ILIKE $2
+       ORDER BY similarity DESC
+       LIMIT $3`,
+      [embedding, `%${labName}%`, limit],
+    );
   }
 
   // 진학 정보의 분야 태그는 ManyToMany라 위 통합 쿼리에서 같이 뽑기 어렵다(조인 테이블 이름을
@@ -440,6 +494,11 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
         // 판단이 없거나 이상하면 검색하는 쪽으로 기운다 — 검색을 건너뛰었다가 정작 자료가
         // 필요한 질문이면 답변 근거를 못 쓰게 되므로, 놓치는 것보다 낭비하는 게 낫다.
         needsSearch: parsed.needsSearch !== false,
+        // 사람 이름만 와야 한다. 긴 문장이 오면 연구실 검색 조건으로 쓰기 어려우므로 버린다.
+        labName:
+          typeof parsed.labName === 'string' && parsed.labName.trim().length <= 10
+            ? parsed.labName.trim()
+            : '',
       };
     } catch (e) {
       this.logger.warn(
@@ -449,6 +508,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
         hypotheticalDoc: dto.question,
         wantsBeginnerFriendly: false,
         needsSearch: true,
+        labName: '',
       };
     }
   }
