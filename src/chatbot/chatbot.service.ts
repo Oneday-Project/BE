@@ -7,6 +7,7 @@ import { In, Repository } from 'typeorm';
 import { envVariableKeys } from 'src/common/const/env.const';
 import { Paper } from 'src/papers/entities/papers.entity';
 import { GradInfo } from 'src/grad-info/entities/grad-info.entity';
+import { UserRoadmap } from 'src/roadmap/entities/user-roadmap.entity';
 import {
   GRAD_INFO_LABELS,
   GradInfoCategory,
@@ -201,6 +202,8 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     private readonly paperRepository: Repository<Paper>,
     @InjectRepository(GradInfo)
     private readonly gradInfoRepository: Repository<GradInfo>,
+    @InjectRepository(UserRoadmap)
+    private readonly userRoadmapRepository: Repository<UserRoadmap>,
     private readonly configService: ConfigService,
   ) {
     this.openai = new OpenAI({
@@ -208,7 +211,10 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     });
   }
 
-  async ask(dto: ChatDto) {
+  async ask(dto: ChatDto, userId?: number) {
+    // 로드맵 진단을 마친 사용자면 그 결과를 상담에 쓴다(없으면 빈 문자열).
+    const userContext = await this.buildUserContext(userId);
+
     const hyde = await this.generateHypotheticalDoc(dto);
     const { hypotheticalDoc, wantsBeginnerFriendly, needsSearch, labName } = hyde;
 
@@ -249,9 +255,10 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     const messages: ChatCompletionMessageParam[] = [
       {
         role: 'system',
-        content: searched
-          ? this.buildSystemPrompt(candidates, searchNote)
-          : this.systemPromptWithoutSearch,
+        content:
+          (searched
+            ? this.buildSystemPrompt(candidates, searchNote)
+            : this.systemPromptWithoutSearch) + userContext,
       },
       ...(dto.history ?? []).slice(-this.maxHistoryMessages).map(
         (h): ChatCompletionMessageParam => ({
@@ -674,6 +681,73 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     const date = value.trim();
 
     return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+  }
+
+  // 로드맵 진단을 마친 사용자의 상태를 시스템 프롬프트에 붙일 형태로 만든다.
+  //
+  // 사용자는 로드맵 화면에서 이미 진단 결과와 GPT 코멘트, 성장 가이드를 봤다.
+  // 그래서 챗봇의 역할은 그 내용을 다시 읽어주는 게 아니라, 그 다음 단계를 구체적으로
+  // 상담해 주는 것이다. 아래 규칙이 그 선을 지키게 한다.
+  //
+  // 로드맵이 없거나 조회에 실패하면 빈 문자열을 반환해 평소처럼 동작하게 둔다
+  // (상담 기능 때문에 답변 자체가 막히면 안 된다).
+  private async buildUserContext(userId?: number): Promise<string> {
+    if (!userId) return '';
+
+    try {
+      const roadmap = await this.userRoadmapRepository.findOne({
+        where: { userId },
+      });
+
+      if (!roadmap?.latest?.result) return '';
+
+      const { answers, result, createdAt } = roadmap.latest;
+      const { overview, radar, strengths, weaknesses, growthGuide } = result;
+
+      const radarText = [
+        `관심·이해 ${radar.interest}`,
+        `연구·프로젝트 경험 ${radar.experience}`,
+        `논문 역량 ${radar.paper}`,
+        `준비·대외활동 ${radar.preparation}`,
+        `학업 기반 ${radar.academic}`,
+      ].join(', ');
+
+      const tasks = [...result.roadmap.major, ...result.roadmap.growth]
+        .slice(0, 6)
+        .map((task) => task.title)
+        .join(', ');
+
+      const lines = [
+        `학년·학기: ${answers.year}학년 ${answers.semester}학기`,
+        `관심 분야: ${overview.interestFields.join(', ') || '미선택'}`,
+        `준비 단계: ${overview.stage}`,
+        `준비도 점수(10점 만점): ${radarText} / 총점 ${overview.totalScore}`,
+        strengths.length > 0 ? `강점: ${strengths.join(', ')}` : null,
+        weaknesses.length > 0 ? `보완이 필요한 부분: ${weaknesses.join(', ')}` : null,
+        `논문 읽기 빈도: ${growthGuide.paperFrequency}, 대외 활동: ${growthGuide.externalActivity}`,
+        `로드맵에 이미 안내된 코멘트: ${overview.comment}`,
+        growthGuide.tips.length > 0
+          ? `로드맵에 이미 안내된 성장 가이드: ${growthGuide.tips.join(' / ')}`
+          : null,
+        tasks ? `로드맵에 이미 제시된 과제: ${tasks}` : null,
+        `진단 시점: ${createdAt.slice(0, 10)}`,
+      ].filter(Boolean);
+
+      return `\n\n[질문한 사용자의 로드맵 진단 결과]\n${lines.join('\n')}
+
+[사용자 정보 사용 규칙]
+- 이 정보는 사용자가 직접 한 설문을 바탕으로 만들어진 진단 결과다. 사용자는 로드맵 화면에서 이미 이 내용을 봤다.
+- 그러므로 위 코멘트나 성장 가이드, 과제를 그대로 반복해서 읽어주지 마라. 사용자가 원하는 것은 "그래서 그걸 어떻게 하느냐"에 대한 더 구체적인 상담이다. 이미 안내된 내용은 한 번만 짧게 언급하고, 실제로 무엇을 어떤 순서로 하면 되는지를 이야기해라.
+- 점수가 낮은 축을 이야기할 때는 비난하듯 말하지 말고, 지금 학년과 남은 시간에 맞춰 할 수 있는 것을 알려줘라.
+- 준비도 점수는 설문을 바탕으로 한 참고치다. 이 점수로 합격 가능성이나 특정 대학원 지원 가능 여부를 단정하지 마라. "이 점수면 어렵다" 같은 말은 하지 마라. 대신 무엇을 보완하면 좋을지로 답해라.
+- 사용자가 자기 상태와 무관한 질문(예: 특정 논문 설명, 입시 일정)을 했다면 이 정보를 굳이 꺼내지 마라.
+- 논문을 추천할 때는 사용자의 관심 분야를 고려하되, [자료 목록]에 없는 논문을 지어내지는 마라.
+- 이 정보가 어디서 왔는지 물으면 "로드맵 진단 결과"라고 밝혀라. 설문 문항 번호나 내부 점수 계산 방식은 설명하지 마라.`;
+    } catch (e) {
+      this.logger.warn(`로드맵 조회 실패, 사용자 정보 없이 답변합니다: ${(e as Error).message}`);
+
+      return '';
+    }
   }
 
   private async embedQuestion(question: string): Promise<string> {
