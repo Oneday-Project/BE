@@ -8,6 +8,10 @@ export class HaiPaperAiSummary extends BaseModel{
     @PrimaryGeneratedColumn()
     id!: number;
 
+    // 기존 요약에는 없던 항목이라 nullable이다. 재생성 API를 돌리면 채워진다.
+    @Column({ nullable: true })
+    whyRead?: string; // 내가 왜 읽어야 하는가(학부생 관점)
+
     @Column()
     abstractKor!: string; // 초록 한국어 번역
 

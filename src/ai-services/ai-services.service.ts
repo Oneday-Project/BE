@@ -394,6 +394,7 @@ export class AiServicesService {
             },
             select: {
                 id: true,
+                whyRead: true,
                 abstractKor: true,
                 what: true,
                 how: true,
@@ -491,6 +492,7 @@ export class AiServicesService {
         });
 
         const fields = {
+            whyRead: result.whyRead,
             abstractKor: result.abstractKor,
             what: result.what,
             how: result.how,
@@ -558,6 +560,14 @@ export class AiServicesService {
 
             Return a JSON object with exactly these fields:
 
+            - whyRead: 이 논문을 왜 읽어볼 만한지 학부생 독자 기준으로 작성한다.
+                이 논문은 같은 전공 구성원이 쓴 학내 논문이므로, 인용수나 학계에서의 위상이 아니라
+                "어떤 관심사를 가진 학생에게 도움이 되는가"를 중심으로 쓴다.
+                user message의 department와 researchFields를 참고해 어떤 분야에 관심 있는 학생에게 유용한지 밝힌다.
+                이 논문을 읽으면 무엇을 알게 되는지, 어떤 수업이나 프로젝트와 이어지는지를 구체적으로 쓴다.
+                초록에 없는 성과나 평가를 지어내지 않는다. 필독이나 획기적 같은 과장된 표현은 쓰지 않는다.
+                반드시 180~200자 사이로 작성한다.
+
             - abstractKor: 논문 초록을 한국어로 자연스럽고 읽기 쉽게 번역한다.
                 직역보다는 의미 전달을 우선한다.
                 한국 논문 초록 스타일을 따른다.
@@ -593,7 +603,9 @@ export class AiServicesService {
             `currentYear: ${currentYear}
                 title: ${haiPaper.title}
                 abstract: ${haiPaper.abstract}
-                publishedYear: ${haiPaper.publishedYear}`;
+                publishedYear: ${haiPaper.publishedYear}
+                department: ${haiPaper.department ?? '미상'}
+                researchFields: ${(haiPaper.researchFields ?? []).join(', ') || '미상'}`;
 
         const response = await this.openai.chat.completions.create({
             model: this.gptModel,

@@ -2,6 +2,9 @@ import { IsString } from "class-validator";
 
 export class CreateHaiPaperAiSummaryDTO {
     @IsString()
+    whyRead!: string; // 내가 왜 읽어야 하는가(학부생 관점)
+
+    @IsString()
     abstractKor!: string; // 초록 한국어 번역
 
     @IsString()
