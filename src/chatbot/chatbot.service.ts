@@ -311,18 +311,17 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     // "○○ 교수님 연구실 논문 다 알려줘" 같은 질문은 유사도 상위 몇 건만 보면 답할 수 없다.
     // 그 연구실 논문이 5편이어도 상위 5건에 한 편만 들어오면 한 편만 소개하게 된다.
     // 그래서 교수를 지목한 질문은 연구실로 직접 걸러서 모은다.
+    // 교수를 지목했어도 질문이 논문이 아니라 연구실 소개일 수 있다("이의철 교수 연구실 정보 알려줘").
+    // 그래서 연구실 논문만 돌려주면 연구실 소개 자료(grad_info)를 못 찾는다.
+    // 두 결과를 합쳐서 넘기고, 무엇을 쓸지는 GPT가 질문을 보고 고르게 한다.
+    let labPapers: SimilarContentRow[] = [];
+
     if (labName) {
-      const labPapers = await this.findPapersByLab(
+      labPapers = await this.findPapersByLab(
         questionEmbedding,
         labName,
         this.maxLabPapers,
       );
-
-      if (labPapers.length > 0) {
-        return { candidates: labPapers, note: '' };
-      }
-      // 그 이름의 연구실 논문이 없으면 일반 검색으로 떨어뜨린다.
-      // (없다는 사실은 GPT가 목록을 보고 판단해 답한다)
     }
 
     const pool = await this.findSimilarContent(
@@ -330,9 +329,16 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       wantsBeginnerFriendly ? this.beginnerFriendlyPoolSize : this.maxSources,
     );
 
-    const candidates = wantsBeginnerFriendly
+    const searched = wantsBeginnerFriendly
       ? this.rerankForFoundational(pool).slice(0, this.maxSources)
       : pool;
+
+    // 연구실 논문을 먼저 두고 일반 검색 결과를 덧붙인다(같은 자료가 두 번 들어가지 않게 거른다).
+    const seen = new Set(labPapers.map((row) => `${row.type}:${row.id}`));
+    const candidates = [
+      ...labPapers,
+      ...searched.filter((row) => !seen.has(`${row.type}:${row.id}`)),
+    ];
 
     return { candidates: await this.attachGradInfoResearchFields(candidates), note: '' };
   }
