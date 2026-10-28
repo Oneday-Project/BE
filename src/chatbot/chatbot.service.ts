@@ -42,6 +42,12 @@ interface HydeResult {
   // 유사도 상위 몇 건만 뽑는 일반 검색으로는 그 연구실 논문을 다 모을 수 없어서,
   // 이 값이 있으면 연구실로 직접 걸러서 찾는다.
   labName: string;
+  // 분야·기간을 지목한 질문("2025년 CV 논문", "최근 3개월 HCI 논문")을 위한 조건.
+  // 유사도만으로는 "그 분야", "그 기간"을 보장할 수 없어서 DB에서 직접 거른다.
+  fieldTag: string; // arXiv 분야 코드(cs.CV 등). 없으면 빈 문자열
+  dateFrom: string; // YYYY-MM-DD. 없으면 빈 문자열
+  dateTo: string; // YYYY-MM-DD. 없으면 빈 문자열
+  wantsRecent: boolean; // "최신", "최근"처럼 기간을 못 박지 않고 최근 논문을 원하는 경우
 }
 
 @Injectable()
@@ -106,6 +112,13 @@ export class ChatbotService {
 - 진학 정보는 아래 [답변 형식]의 논문 추천 형식(추천 목록, "처음 한 편을 고른다면")을 따르지 않는다. 답변 문장 속에서 자연스럽게 녹여서 말해라.
 - 자료의 출처나 제목을 "출처:" 처럼 따로 표시하지 마라. 답변 문장 안에서 내용만 전하면 된다.
 
+[분야·기간을 지목한 질문 처리]
+사용자가 분야나 기간을 지목하면([자료 목록]이 그 조건으로 걸러져 올 수 있다) 아래를 지켜라.
+- 목록에 있는 논문만 소개하고, 조건에 맞는 논문이 하나도 없으면 "그 조건에 맞는 논문은 H-AI Grad에 아직 없다"고 분명히 밝혀라. 조건에서 벗어난 논문을 대신 추천하지 마라.
+- 발표년도나 발행일을 말할 때는 자료에 적힌 값만 쓰고, 적혀 있지 않으면 시기를 단정하지 마라.
+- "최신"이나 "최근"을 물었다면 목록이 최신순으로 정렬되어 올 수 있다. 이때도 질문 주제와 동떨어진 논문은 빼라.
+- 조건에 맞는 논문이 한 편뿐이면 한 편만 소개하고, 억지로 수를 채우지 마라.
+
 [휴먼AI공학전공 논문 사용 규칙]
 [자료 목록]에 [휴먼AI공학전공 논문]으로 표시된 항목은 상명대학교 휴먼AI공학전공에서 나온 논문이다(학위논문이나 전공 소속 연구실의 논문).
 - "우리 과 논문", "우리 학교 논문", "○○○ 교수님 논문", "○○○ 교수님 연구실 논문" 같은 질문에는 이 항목들을 우선해서 답해라. 외부 논문([논문])으로 대신 답하지 마라.
@@ -168,12 +181,17 @@ export class ChatbotService {
 - 진학 경험, 준비 과정, 어느 대학원에 갔는지, 입시 일정, 지원 제도처럼 논문이 아니라 진학 자료가 답이 될 질문이면, 논문 초록이 아니라 그 진학 정보 문서처럼 써라. 선배 사례를 찾는 질문이면 경험담처럼("저는 학부 3학년 때부터 학부연구생을 시작했고, 컨택은 이렇게 했습니다"), 입시나 제도를 찾는 질문이면 안내문처럼("전기 모집 원서 접수는 9월 중순이며 면접은 10월 말에 진행된다") 쓰면 된다. 문체가 실제 자료와 비슷할 때 검색이 잘 맞으므로, 이런 질문에 논문 초록체로 쓰면 안 된다.
 
 마지막으로, 이 질문에 답하려면 자료를 찾아봐야 하는지 판단해라(needsSearch). 논문·연구 주제를 찾는 질문은 물론이고, 진학 준비·경험·입시·연구실 컨택·지원 제도 관련 질문도 등록된 진학 정보에 답이 있을 수 있으니 true다. 논문과 대학원 어느 쪽과도 무관한 잡담(날씨, 인사, 다른 서비스 문의 등)일 때만 false다. 애매하면 true로 판단해라.
+질문이 분야나 기간을 지목하고 있으면 아래 값들도 채워라. user message에 오늘 날짜가 주어지므로 "최근 3개월", "올해" 같은 표현은 그 날짜를 기준으로 계산해라.
+- fieldTag: 질문이 특정 연구 분야를 지목하면 해당 arXiv 분야 코드를 담는다. 쓸 수 있는 값은 cs.CV(컴퓨터비전), cs.CL(자연어처리), cs.LG(기계학습·딥러닝·강화학습), cs.RO(로보틱스), cs.IR(정보검색·추천), cs.SD(음성·오디오), cs.HC(HCI·인간컴퓨터상호작용), cs.MM(멀티모달), cs.SE(소프트웨어공학·코드), stat.ML(통계적 기계학습) 뿐이다. 해당하는 분야가 없거나 분야를 지목하지 않았으면 빈 문자열("")로 둔다. 특정 기법(예: 트랜스포머, 디퓨전)을 물은 것이지 분야를 지목한 게 아니라면 빈 문자열로 둔다.
+- dateFrom, dateTo: 기간이 분명하면 YYYY-MM-DD 형식으로 채운다. 예를 들어 "2025년에 나온"은 dateFrom 2025-01-01, dateTo 2025-12-31이고 "2026년 1월에 나온"은 2026-01-01과 2026-01-31이다. "최근 3개월"은 오늘 날짜에서 3개월 전부터 오늘까지다. 기간을 말하지 않았으면 둘 다 빈 문자열("")로 둔다.
+- wantsRecent: "최신", "최근에 나온", "요즘" 처럼 기간을 못 박지 않고 최근 논문을 원하면 true, 아니면 false다. dateFrom과 dateTo를 채웠다면 wantsRecent는 false로 둔다.
+
 질문이 특정 교수의 연구실 논문을 묻고 있으면(예: "이의철 교수님 연구실 논문 알려줘", "김동근 교수님 논문 추천해줘", "우리 과 권지은 교수님 연구는?") 그 교수의 이름만 labName에 담아라(예: "이의철"). 교수 이름이 없거나 특정 교수를 지목하지 않은 질문이면 빈 문자열("")로 둬라. 직함(교수님, 교수), 연구실, 랩 같은 말은 빼고 사람 이름만 담는다.
 
 needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 빈 문자열("")로 두고, 작성하느라 시간을 쓰지 마라.
 
 아래 JSON 형식으로만 답해라. 다른 설명은 절대 붙이지 마라.
-{"hypotheticalDoc": "가상의 논문 초록 또는 진학 정보 문서", "wantsBeginnerFriendly": true 또는 false, "needsSearch": true 또는 false, "labName": "교수 이름 또는 빈 문자열"}`;
+{"hypotheticalDoc": "가상의 논문 초록 또는 진학 정보 문서", "wantsBeginnerFriendly": true 또는 false, "needsSearch": true 또는 false, "labName": "교수 이름 또는 빈 문자열", "fieldTag": "분야 코드 또는 빈 문자열", "dateFrom": "YYYY-MM-DD 또는 빈 문자열", "dateTo": "YYYY-MM-DD 또는 빈 문자열", "wantsRecent": true 또는 false}`;
 
   constructor(
     @InjectRepository(Paper)
@@ -188,8 +206,8 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
   }
 
   async ask(dto: ChatDto) {
-    const { hypotheticalDoc, wantsBeginnerFriendly, needsSearch, labName } =
-      await this.generateHypotheticalDoc(dto);
+    const hyde = await this.generateHypotheticalDoc(dto);
+    const { hypotheticalDoc, wantsBeginnerFriendly, needsSearch, labName } = hyde;
 
     // 날씨 같은 잡담처럼 자료가 필요 없는 질문은 임베딩·검색을 아예 건너뛴다. 본문 5편이
     // 요청 토큰에서 가장 큰 부분이라 비용이 크고, 무관한 자료가 딸려 들어가면 억지 인용으로
@@ -201,11 +219,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
 
     if (needsSearch) {
       try {
-        candidates = await this.searchCandidates(
-          hypotheticalDoc,
-          wantsBeginnerFriendly,
-          labName,
-        );
+        candidates = await this.searchCandidates(hyde);
       } catch (e) {
         this.logger.warn(
           `자료 검색 실패, 자료 없이 답변합니다: ${(e as Error).message}`,
@@ -215,7 +229,7 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
     }
 
     this.logger.log(
-      `question="${dto.question}" needsSearch=${needsSearch} wantsBeginnerFriendly=${wantsBeginnerFriendly} labName="${labName}" hyde="${
+      `question="${dto.question}" needsSearch=${needsSearch} wantsBeginnerFriendly=${wantsBeginnerFriendly} labName="${labName}" filter="${hyde.fieldTag || '-'} ${hyde.dateFrom || '-'}~${hyde.dateTo || '-'}${hyde.wantsRecent ? ' 최신' : ''}" hyde="${
         needsSearch ? hypotheticalDoc : '(검색 안 함)'
       }" candidates=${
         candidates
@@ -255,12 +269,22 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
   // 입문용 요청이면 넉넉히(20개) 뽑아서 인용수·연도 기반으로 재정렬한 뒤 상위 maxSources개만
   // 남긴다 — 순수 유사도만으로 20개를 그대로 넘기면 지엽적인 세부분야 논문이 섞여 관련성이
   // 오히려 떨어지는 경우가 실측으로 확인되었다.
-  private async searchCandidates(
-    hypotheticalDoc: string,
-    wantsBeginnerFriendly: boolean,
-    labName: string,
-  ): Promise<SimilarContentRow[]> {
+  private async searchCandidates(hyde: HydeResult): Promise<SimilarContentRow[]> {
+    const { hypotheticalDoc, wantsBeginnerFriendly, labName } = hyde;
     const questionEmbedding = await this.embedQuestion(hypotheticalDoc);
+
+    // "2025년에 나온 CV 논문", "최근 3개월 HCI 논문" 처럼 분야나 기간을 못 박은 질문은
+    // 유사도 상위 몇 건만 봐서는 조건을 지킬 수 없다(그 조건에 맞는 논문이 상위에 없을 수 있다).
+    // 그래서 DB에서 직접 걸러서 찾는다. 분야·발행일이 모두 있는 arXiv 논문(paper)만 대상이다.
+    if (hyde.fieldTag || hyde.dateFrom || hyde.dateTo || hyde.wantsRecent) {
+      const filtered = await this.findPapersByFilter(questionEmbedding, hyde);
+
+      if (filtered.length > 0) {
+        return filtered;
+      }
+      // 조건에 맞는 논문이 없으면 일반 검색으로 떨어뜨린다.
+      // (조건에 맞는 게 없다는 사실은 GPT가 목록을 보고 판단해 답한다)
+    }
 
     // "○○ 교수님 연구실 논문 다 알려줘" 같은 질문은 유사도 상위 몇 건만 보면 답할 수 없다.
     // 그 연구실 논문이 5편이어도 상위 5건에 한 편만 들어오면 한 편만 소개하게 된다.
@@ -289,6 +313,77 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       : pool;
 
     return this.attachGradInfoResearchFields(candidates);
+  }
+
+  // 분야·기간 조건으로 arXiv 논문을 직접 걸러서 돌려준다.
+  // - 기간을 못 박았으면 그 기간 안에서 유사도 순
+  // - "최신"처럼 기간을 안 박았으면 발행일 최신순(그래야 "최신 CV 논문"이 실제로 최신이 된다)
+  // 분야 조건은 ManyToMany 조인 테이블을 봐야 하는데, 테이블·컬럼 이름을 raw SQL에
+  // 하드코딩하면 엔티티가 바뀔 때 조용히 깨지므로 TypeORM 메타데이터에서 읽어 쓴다.
+  private async findPapersByFilter(
+    embedding: string,
+    hyde: HydeResult,
+  ): Promise<SimilarContentRow[]> {
+    const conditions: string[] = ['p.embedding IS NOT NULL'];
+    const params: unknown[] = [embedding];
+
+    if (hyde.dateFrom) {
+      params.push(hyde.dateFrom);
+      conditions.push(`p.published_date >= $${params.length}`);
+    }
+
+    if (hyde.dateTo) {
+      params.push(hyde.dateTo);
+      conditions.push(`p.published_date <= $${params.length}`);
+    }
+
+    if (hyde.fieldTag) {
+      const relation = this.paperRepository.metadata.findRelationWithPropertyPath(
+        'researchFields',
+      );
+
+      if (relation?.joinTableName) {
+        const joinTable = relation.joinTableName;
+        const paperColumn = relation.joinColumns[0].databaseName;
+        const fieldColumn = relation.inverseJoinColumns[0].databaseName;
+
+        params.push(hyde.fieldTag);
+        conditions.push(
+          `EXISTS (
+             SELECT 1 FROM "${joinTable}" jt
+             JOIN research_field rf ON rf.id = jt."${fieldColumn}"
+             WHERE jt."${paperColumn}" = p."arxivId"
+               AND (rf.name = $${params.length} OR rf.tag = $${params.length})
+           )`,
+        );
+      }
+    }
+
+    // 기간을 못 박지 않은 "최신" 요청이면 발행일 순으로, 그 외에는 유사도 순으로 고른다.
+    const orderBy =
+      hyde.wantsRecent && !hyde.dateFrom && !hyde.dateTo
+        ? 'p.published_date DESC'
+        : 'similarity DESC';
+
+    params.push(this.maxSources);
+
+    return this.paperRepository.query(
+      `SELECT 'arxiv' AS type, p."arxivId" AS id, p.title, p.abstract AS body,
+              1 - (p.embedding::vector <=> $1::vector) AS similarity,
+              p.citation_count AS "citationCount",
+              p.published_date AS "publishedDate",
+              NULL::varchar AS lab,
+              NULL::text AS authors,
+              NULL::varchar AS category,
+              NULL::int AS "referenceYear",
+              NULL::int AS "admissionYear",
+              NULL::int AS "entryYear"
+       FROM paper p
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY ${orderBy}
+       LIMIT $${params.length}`,
+      params,
+    );
   }
 
   // 지목된 교수의 연구실 논문만 모아서 유사도 순으로 돌려준다.
@@ -466,9 +561,11 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
       .map((h) => `${h.role === 'user' ? '사용자' : '챗봇'}: ${h.content}`)
       .join('\n');
 
+    const today = new Date().toISOString().slice(0, 10);
+
     const userContent = historyText
-      ? `[이전 대화]\n${historyText}\n\n[현재 질문]\n${dto.question}`
-      : dto.question;
+      ? `[오늘 날짜] ${today}\n\n[이전 대화]\n${historyText}\n\n[현재 질문]\n${dto.question}`
+      : `[오늘 날짜] ${today}\n\n[현재 질문]\n${dto.question}`;
 
     try {
       const response = await this.openai.chat.completions.create({
@@ -499,6 +596,10 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
           typeof parsed.labName === 'string' && parsed.labName.trim().length <= 10
             ? parsed.labName.trim()
             : '',
+        fieldTag: this.normalizeFieldTag(parsed.fieldTag),
+        dateFrom: this.normalizeDate(parsed.dateFrom),
+        dateTo: this.normalizeDate(parsed.dateTo),
+        wantsRecent: parsed.wantsRecent === true,
       };
     } catch (e) {
       this.logger.warn(
@@ -509,8 +610,34 @@ needsSearch가 false면 가상 문서는 쓰이지 않으니 hypotheticalDoc은 
         wantsBeginnerFriendly: false,
         needsSearch: true,
         labName: '',
+        fieldTag: '',
+        dateFrom: '',
+        dateTo: '',
+        wantsRecent: false,
       };
     }
+  }
+
+  // GPT가 엉뚱한 값을 넣어도 검색 조건이 깨지지 않도록 걸러낸다.
+  private readonly allowedFieldTags = [
+    'cs.CV', 'cs.CL', 'cs.LG', 'cs.RO', 'cs.IR',
+    'cs.SD', 'cs.HC', 'cs.MM', 'cs.SE', 'stat.ML',
+  ];
+
+  private normalizeFieldTag(value: unknown) {
+    if (typeof value !== 'string') return '';
+
+    const tag = value.trim();
+
+    return this.allowedFieldTags.includes(tag) ? tag : '';
+  }
+
+  private normalizeDate(value: unknown) {
+    if (typeof value !== 'string') return '';
+
+    const date = value.trim();
+
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
   }
 
   private async embedQuestion(question: string): Promise<string> {
